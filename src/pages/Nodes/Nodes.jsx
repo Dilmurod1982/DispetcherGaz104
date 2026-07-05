@@ -148,7 +148,7 @@ const Nodes = () => {
 
   const translations = {
     title: script === "latin" ? "Tugunlar" : "Тугунлар",
-    subtitle: script === "latin" ? "GRS dagi tugunlar" : "ГРС даги тугунлар",
+    subtitle: script === "latin" ? "GRS dagi tugunla" : "ГРС даги тугунлар",
     addNode: script === "latin" ? "Tugun qo'shish" : "Тугун қўшиш",
     search: script === "latin" ? "Qidirish..." : "Қидириш...",
     searchPlaceholder:
