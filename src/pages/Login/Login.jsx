@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import useAuthStore from "../../store/authStore";
 import useLanguageStore from "../../store/languageStore.js";
 import useThemeStore from "../../store/themeStore.js";
+import { logAction, ActionTypes } from "../../services/logger";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -20,7 +21,7 @@ const Login = () => {
   // Перенаправление если уже залогинен
   useEffect(() => {
     if (user && !authLoading) {
-      console.log("Пользователь уже залогинен, перенаправляем на dashboard");
+      // console.log("Пользователь уже залогинен, перенаправляем на dashboard");
       navigate("/dashboard", { replace: true });
     }
   }, [user, authLoading, navigate]);
@@ -62,12 +63,32 @@ const Login = () => {
       if (!result.success) {
         setError(result.error);
         setLoading(false);
+
+        // Логируем неудачную попытку входа
+        await logAction(ActionTypes.USER_LOGIN, {
+          email: email,
+          success: false,
+          error: result.error,
+        });
+      } else {
+        // Логируем успешный вход
+        await logAction(ActionTypes.USER_LOGIN, {
+          email: email,
+          success: true,
+        });
+        // При успешном входе useEffect перенаправит на dashboard
       }
-      // При успешном входе useEffect перенаправит на dashboard
     } catch (error) {
       console.error("Login error:", error);
       setError(error.message || "Xatolik yuz berdi");
       setLoading(false);
+
+      // Логируем ошибку
+      await logAction(ActionTypes.USER_LOGIN, {
+        email: email,
+        success: false,
+        error: error.message,
+      });
     }
   };
 

@@ -26,6 +26,9 @@ import {
   Gauge,
 } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
+import useAuthStore from "../../store/authStore";
+import useLogger from "../../hooks/useLogger";
+import { ActionTypes } from "../../services/logger";
 import { toast } from "react-toastify";
 
 // Компонент модального окна для создания модели ГРП
@@ -122,6 +125,8 @@ const GrpModelModal = ({ isOpen, onClose, onSave, translations }) => {
 
 const Grp = () => {
   const { script } = useLanguageStore();
+  const { userData } = useAuthStore();
+  const { log } = useLogger();
   const [grpList, setGrpList] = useState([]);
   const [cities, setCities] = useState([]);
   const [grpModels, setGrpModels] = useState([]);
@@ -134,6 +139,9 @@ const Grp = () => {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isModelModalOpen, setIsModelModalOpen] = useState(false);
+
+  // Проверка, является ли пользователь админом
+  const isAdmin = userData?.role === "admin" || userData?.role === "Админ";
 
   const translations = {
     title: script === "latin" ? "GTQ (GRP)" : "ГТҚ (ГРП)",
@@ -204,6 +212,10 @@ const Grp = () => {
     error: script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
     city: script === "latin" ? "shahar" : "шаҳар",
     district: script === "latin" ? "tuman" : "туман",
+    noPermission:
+      script === "latin"
+        ? "Faqat administratorlar GTQ qo'shishi mumkin"
+        : "Фақат администраторлар ГТҚ қўшиши мумкин",
   };
 
   useEffect(() => {
@@ -213,7 +225,6 @@ const Grp = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Загрузка ГТҚ
       const grpSnapshot = await getDocs(collection(db, "grp"));
       const grpData = grpSnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -221,7 +232,6 @@ const Grp = () => {
       }));
       setGrpList(grpData);
 
-      // Загрузка городов
       const citiesSnapshot = await getDocs(collection(db, "cities"));
       const citiesData = citiesSnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -229,7 +239,6 @@ const Grp = () => {
       }));
       setCities(citiesData);
 
-      // Загрузка моделей ГРП
       const modelsSnapshot = await getDocs(collection(db, "grp_models"));
       const modelsData = modelsSnapshot.docs.map((doc) => ({
         id: doc.id,
@@ -330,7 +339,6 @@ const Grp = () => {
 
       setGrpModels((prev) => [...prev, newModel]);
 
-      // Автоматически выбираем созданную модель
       if (isCreating) {
         setNewGrp((prev) => ({
           ...prev,
@@ -361,6 +369,10 @@ const Grp = () => {
   };
 
   const handleCreateGrp = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsCreating(true);
     setIsModalOpen(true);
     setNewGrp({
@@ -372,6 +384,7 @@ const Grp = () => {
       pressure: "",
     });
     setIsSaving(false);
+    log(ActionTypes.GRP_CREATE, { action: "open_form" });
   };
 
   const handleCloseModal = () => {
@@ -385,6 +398,10 @@ const Grp = () => {
   };
 
   const handleEdit = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsEditMode(true);
     setIsSaving(false);
   };
@@ -414,11 +431,20 @@ const Grp = () => {
           ...newGrp,
           createdAt: new Date(),
         });
+        await log(ActionTypes.GRP_CREATE, {
+          grpName: newGrp.name,
+          locationName: newGrp.locationName,
+          modelName: newGrp.modelName,
+        });
         toast.success(script === "latin" ? "GTQ qo'shildi" : "ГТҚ қўшилди");
       } else {
         await updateDoc(doc(db, "grp", selectedGrp.id), {
           ...selectedGrp,
           updatedAt: new Date(),
+        });
+        await log(ActionTypes.GRP_UPDATE, {
+          grpId: selectedGrp.id,
+          grpName: selectedGrp.name,
         });
         toast.success(script === "latin" ? "GTQ yangilandi" : "ГТҚ янгиланди");
       }
@@ -432,9 +458,18 @@ const Grp = () => {
   };
 
   const handleDelete = async () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsSaving(true);
     try {
+      const grpToDelete = selectedGrp;
       await deleteDoc(doc(db, "grp", selectedGrp.id));
+      await log(ActionTypes.GRP_DELETE, {
+        grpId: grpToDelete.id,
+        grpName: grpToDelete.name,
+      });
       toast.success(script === "latin" ? "GTQ o'chirildi" : "ГТҚ ўчирилди");
       await loadData();
       handleCloseModal();
@@ -484,13 +519,15 @@ const Grp = () => {
             {translations.subtitle}
           </p>
         </div>
-        <button
-          onClick={handleCreateGrp}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
-        >
-          <Plus size={18} />
-          {translations.addGrp}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={handleCreateGrp}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
+          >
+            <Plus size={18} />
+            {translations.addGrp}
+          </button>
+        )}
       </div>
 
       <div className="mb-6">
@@ -592,7 +629,7 @@ const Grp = () => {
                 ? translations.searchPlaceholder
                 : translations.startAdding}
             </p>
-            {!searchTerm && (
+            {!searchTerm && isAdmin && (
               <button
                 onClick={handleCreateGrp}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
@@ -750,22 +787,26 @@ const Grp = () => {
               <div className="flex flex-wrap gap-2 justify-end">
                 {!isCreating && !isEditMode && (
                   <>
-                    <button
-                      onClick={() => setIsDeleteConfirmOpen(true)}
-                      disabled={isSaving}
-                      className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      {translations.deleteBtn}
-                    </button>
-                    <button
-                      onClick={handleEdit}
-                      disabled={isSaving}
-                      className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <Edit className="w-4 h-4" />
-                      {translations.editBtn}
-                    </button>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => setIsDeleteConfirmOpen(true)}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {translations.deleteBtn}
+                        </button>
+                        <button
+                          onClick={handleEdit}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Edit className="w-4 h-4" />
+                          {translations.editBtn}
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={handleCloseModal}
                       disabled={isSaving}

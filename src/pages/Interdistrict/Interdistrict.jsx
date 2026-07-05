@@ -25,6 +25,9 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
+import useAuthStore from "../../store/authStore";
+import useLogger from "../../hooks/useLogger";
+import { ActionTypes } from "../../services/logger";
 import { toast } from "react-toastify";
 
 // Компонент модального окна для создания счетчика
@@ -121,6 +124,8 @@ const MeterModal = ({ isOpen, onClose, onSave, translations }) => {
 
 const Interdistrict = () => {
   const { script } = useLanguageStore();
+  const { userData } = useAuthStore();
+  const { log } = useLogger();
   const [interdistricts, setInterdistricts] = useState([]);
   const [cities, setCities] = useState([]);
   const [meters, setMeters] = useState([]);
@@ -133,6 +138,9 @@ const Interdistrict = () => {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isMeterModalOpen, setIsMeterModalOpen] = useState(false);
+
+  // Проверка, является ли пользователь админом
+  const isAdmin = userData?.role === "admin" || userData?.role === "Админ";
 
   const translations = {
     title:
@@ -228,6 +236,10 @@ const Interdistrict = () => {
     },
     city: script === "latin" ? "shahar" : "шаҳар",
     district: script === "latin" ? "tuman" : "туман",
+    noPermission:
+      script === "latin"
+        ? "Faqat administratorlar hisoblagich qo'shishi mumkin"
+        : "Фақат администраторлар ҳисоблагич қўшиши мумкин",
   };
 
   useEffect(() => {
@@ -282,15 +294,10 @@ const Interdistrict = () => {
   const checkFormValidity = () => {
     const currentData = isCreating ? newItem : selectedItem;
     if (!currentData) return false;
-
-    // Проверка обязательных полей
     if (!currentData.name?.trim()) return false;
     if (!currentData.supplierId?.trim()) return false;
     if (!currentData.receiverId?.trim()) return false;
-
-    // Проверка что поставщик и приёмщик разные
     if (currentData.supplierId === currentData.receiverId) return false;
-
     return true;
   };
 
@@ -317,7 +324,6 @@ const Interdistrict = () => {
           supplierId: selectedCity.id,
           supplierName: displayName,
         }));
-        // Проверяем, не совпадает ли с приёмщиком
         if (prev.receiverId === selectedCity.id) {
           toast.warning(translations.sameCityError);
           setNewItem((prev) => ({ ...prev, receiverId: "", receiverName: "" }));
@@ -350,7 +356,6 @@ const Interdistrict = () => {
       const displayName = `${selectedCity.name} (${type})`;
 
       if (isCreating) {
-        // Проверяем, не совпадает ли с поставщиком
         if (newItem.supplierId === cityId) {
           toast.warning(translations.sameCityError);
           return;
@@ -448,6 +453,10 @@ const Interdistrict = () => {
   };
 
   const handleCreateItem = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsCreating(true);
     setIsModalOpen(true);
     setNewItem({
@@ -462,6 +471,7 @@ const Interdistrict = () => {
       subscale: "",
     });
     setIsSaving(false);
+    log(ActionTypes.INTERDISTRICT_CREATE, { action: "open_form" });
   };
 
   const handleCloseModal = () => {
@@ -475,6 +485,10 @@ const Interdistrict = () => {
   };
 
   const handleEdit = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsEditMode(true);
     setIsSaving(false);
   };
@@ -506,6 +520,11 @@ const Interdistrict = () => {
           ...newItem,
           createdAt: new Date(),
         });
+        await log(ActionTypes.INTERDISTRICT_CREATE, {
+          itemName: newItem.name,
+          supplierName: newItem.supplierName,
+          receiverName: newItem.receiverName,
+        });
         toast.success(
           script === "latin" ? "Hisoblagich qo'shildi" : "Ҳисоблагич қўшилди",
         );
@@ -513,6 +532,10 @@ const Interdistrict = () => {
         await updateDoc(doc(db, "interdistrict", selectedItem.id), {
           ...selectedItem,
           updatedAt: new Date(),
+        });
+        await log(ActionTypes.INTERDISTRICT_UPDATE, {
+          itemId: selectedItem.id,
+          itemName: selectedItem.name,
         });
         toast.success(
           script === "latin"
@@ -530,9 +553,18 @@ const Interdistrict = () => {
   };
 
   const handleDelete = async () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsSaving(true);
     try {
+      const itemToDelete = selectedItem;
       await deleteDoc(doc(db, "interdistrict", selectedItem.id));
+      await log(ActionTypes.INTERDISTRICT_DELETE, {
+        itemId: itemToDelete.id,
+        itemName: itemToDelete.name,
+      });
       toast.success(
         script === "latin" ? "Hisoblagich o'chirildi" : "Ҳисоблагич ўчирилди",
       );
@@ -589,13 +621,15 @@ const Interdistrict = () => {
             {translations.subtitle}
           </p>
         </div>
-        <button
-          onClick={handleCreateItem}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
-        >
-          <Plus size={18} />
-          {translations.addItem}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={handleCreateItem}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
+          >
+            <Plus size={18} />
+            {translations.addItem}
+          </button>
+        )}
       </div>
 
       <div className="mb-6">
@@ -698,7 +732,7 @@ const Interdistrict = () => {
                 ? translations.searchPlaceholder
                 : translations.startAdding}
             </p>
-            {!searchTerm && (
+            {!searchTerm && isAdmin && (
               <button
                 onClick={handleCreateItem}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
@@ -935,22 +969,26 @@ const Interdistrict = () => {
               <div className="flex flex-wrap gap-2 justify-end">
                 {!isCreating && !isEditMode && (
                   <>
-                    <button
-                      onClick={() => setIsDeleteConfirmOpen(true)}
-                      disabled={isSaving}
-                      className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      {translations.deleteBtn}
-                    </button>
-                    <button
-                      onClick={handleEdit}
-                      disabled={isSaving}
-                      className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <Edit className="w-4 h-4" />
-                      {translations.editBtn}
-                    </button>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => setIsDeleteConfirmOpen(true)}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {translations.deleteBtn}
+                        </button>
+                        <button
+                          onClick={handleEdit}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Edit className="w-4 h-4" />
+                          {translations.editBtn}
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={handleCloseModal}
                       disabled={isSaving}

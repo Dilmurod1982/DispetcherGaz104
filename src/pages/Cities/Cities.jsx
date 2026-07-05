@@ -23,10 +23,15 @@ import {
   Navigation,
 } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
+import useAuthStore from "../../store/authStore";
+import useLogger from "../../hooks/useLogger";
+import { ActionTypes } from "../../services/logger";
 import { toast } from "react-toastify";
 
 const Cities = () => {
   const { script } = useLanguageStore();
+  const { userData } = useAuthStore();
+  const { log } = useLogger();
   const [cities, setCities] = useState([]);
   const [regions, setRegions] = useState([]);
   const [selectedCity, setSelectedCity] = useState(null);
@@ -36,6 +41,10 @@ const Cities = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Проверка, является ли пользователь админом
+  const isAdmin = userData?.role === "admin" || userData?.role === "Админ";
 
   const translations = {
     title: script === "latin" ? "Shahar va tumanlar" : "Шаҳар ва туманлар",
@@ -68,6 +77,7 @@ const Cities = () => {
     areaLabel: script === "latin" ? "Maydoni" : "Майдони",
     cancel: script === "latin" ? "Bekor qilish" : "Бекор қилиш",
     save: script === "latin" ? "Saqlash" : "Сақлаш",
+    saving: script === "latin" ? "Saqlanmoqda..." : "Сақланмоқда...",
     close: script === "latin" ? "Yopish" : "Ёпиш",
     editBtn: script === "latin" ? "Tahrirlash" : "Таҳрирлаш",
     deleteBtn: script === "latin" ? "O'chirish" : "Ўчириш",
@@ -97,6 +107,10 @@ const Cities = () => {
     cityLabel: script === "latin" ? "Shahar" : "Шаҳар",
     district: script === "latin" ? "Tuman" : "Туман",
     village: script === "latin" ? "Qishloq" : "Қишлоқ",
+    noPermission:
+      script === "latin"
+        ? "Faqat administratorlar shahar/tuman qo'shishi mumkin"
+        : "Фақат администраторлар шаҳар/туман қўшиши мумкин",
   };
 
   useEffect(() => {
@@ -178,6 +192,10 @@ const Cities = () => {
   };
 
   const handleCreateCity = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsCreating(true);
     setIsModalOpen(true);
     setNewCity({
@@ -188,21 +206,31 @@ const Cities = () => {
       population: "",
       area: "",
     });
+    setIsSaving(false);
+    log(ActionTypes.CITY_CREATE, { action: "open_form" });
   };
 
   const handleCloseModal = () => {
+    if (isSaving) return;
     setIsModalOpen(false);
     setIsEditMode(false);
     setIsCreating(false);
     setSelectedCity(null);
     setIsDeleteConfirmOpen(false);
+    setIsSaving(false);
   };
 
   const handleEdit = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsEditMode(true);
+    setIsSaving(false);
   };
 
   const handleCancel = () => {
+    if (isSaving) return;
     if (isCreating) {
       handleCloseModal();
     } else {
@@ -218,11 +246,18 @@ const Cities = () => {
       return;
     }
 
+    setIsSaving(true);
+
     try {
       if (isCreating) {
         await addDoc(collection(db, "cities"), {
           ...newCity,
           createdAt: new Date(),
+        });
+        await log(ActionTypes.CITY_CREATE, {
+          cityName: newCity.name,
+          regionName: newCity.regionName,
+          cityType: newCity.type,
         });
         toast.success(
           script === "latin" ? "Shahar/tuman qo'shildi" : "Шаҳар/туман қўшилди",
@@ -231,6 +266,10 @@ const Cities = () => {
         await updateDoc(doc(db, "cities", selectedCity.id), {
           ...selectedCity,
           updatedAt: new Date(),
+        });
+        await log(ActionTypes.CITY_UPDATE, {
+          cityId: selectedCity.id,
+          cityName: selectedCity.name,
         });
         toast.success(
           script === "latin"
@@ -245,12 +284,23 @@ const Cities = () => {
       toast.error(
         script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
       );
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
+    setIsSaving(true);
     try {
+      const cityToDelete = selectedCity;
       await deleteDoc(doc(db, "cities", selectedCity.id));
+      await log(ActionTypes.CITY_DELETE, {
+        cityId: cityToDelete.id,
+        cityName: cityToDelete.name,
+      });
       toast.success(
         script === "latin" ? "Shahar/tuman o'chirildi" : "Шаҳар/туман ўчирилди",
       );
@@ -261,6 +311,7 @@ const Cities = () => {
       toast.error(
         script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
       );
+      setIsSaving(false);
     }
   };
 
@@ -315,13 +366,15 @@ const Cities = () => {
             {translations.subtitle}
           </p>
         </div>
-        <button
-          onClick={handleCreateCity}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
-        >
-          <Plus size={18} />
-          {translations.addCity}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={handleCreateCity}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
+          >
+            <Plus size={18} />
+            {translations.addCity}
+          </button>
+        )}
       </div>
 
       <div className="mb-6">
@@ -424,7 +477,7 @@ const Cities = () => {
                 ? translations.searchPlaceholder
                 : translations.startAdding}
             </p>
-            {!searchTerm && (
+            {!searchTerm && isAdmin && (
               <button
                 onClick={handleCreateCity}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
@@ -439,7 +492,7 @@ const Cities = () => {
       {isModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-          onClick={handleCloseModal}
+          onClick={isSaving ? undefined : handleCloseModal}
         >
           <div
             className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-lg max-h-[90vh] overflow-hidden"
@@ -455,7 +508,8 @@ const Cities = () => {
               </h2>
               <button
                 onClick={handleCloseModal}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                disabled={isSaving}
+                className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
               </button>
@@ -471,8 +525,8 @@ const Cities = () => {
                     type="text"
                     value={isCreating ? newCity.name : selectedCity?.name || ""}
                     onChange={(e) => handleInputChange("name", e.target.value)}
-                    disabled={!isCreating && !isEditMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm"
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                     placeholder={translations.name}
                   />
                 </div>
@@ -484,8 +538,8 @@ const Cities = () => {
                   <select
                     value={isCreating ? newCity.type : selectedCity?.type || ""}
                     onChange={(e) => handleInputChange("type", e.target.value)}
-                    disabled={!isCreating && !isEditMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm"
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     <option value="Город">{translations.cityLabel}</option>
                     <option value="Район">{translations.district}</option>
@@ -505,8 +559,8 @@ const Cities = () => {
                         : selectedCity?.regionId || ""
                     }
                     onChange={(e) => handleRegionChange(e.target.value)}
-                    disabled={!isCreating && !isEditMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm"
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     <option value="">{translations.selectRegion}</option>
                     {regions.map((region) => (
@@ -532,8 +586,8 @@ const Cities = () => {
                       onChange={(e) =>
                         handleInputChange("population", e.target.value)
                       }
-                      disabled={!isCreating && !isEditMode}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm"
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                       placeholder="500 000"
                     />
                   </div>
@@ -551,8 +605,8 @@ const Cities = () => {
                         onChange={(e) =>
                           handleInputChange("area", e.target.value)
                         }
-                        disabled={!isCreating && !isEditMode}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm pr-12"
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm pr-12 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                         placeholder="0"
                       />
                       <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
@@ -586,23 +640,30 @@ const Cities = () => {
               <div className="flex flex-wrap gap-2 justify-end">
                 {!isCreating && !isEditMode && (
                   <>
-                    <button
-                      onClick={() => setIsDeleteConfirmOpen(true)}
-                      className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      {translations.deleteBtn}
-                    </button>
-                    <button
-                      onClick={handleEdit}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
-                    >
-                      <Edit className="w-4 h-4" />
-                      {translations.editBtn}
-                    </button>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => setIsDeleteConfirmOpen(true)}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {translations.deleteBtn}
+                        </button>
+                        <button
+                          onClick={handleEdit}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Edit className="w-4 h-4" />
+                          {translations.editBtn}
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={handleCloseModal}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                      disabled={isSaving}
+                      className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {translations.close}
                     </button>
@@ -613,21 +674,31 @@ const Cities = () => {
                   <>
                     <button
                       onClick={handleCancel}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                      disabled={isSaving}
+                      className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {translations.cancel}
                     </button>
                     <button
                       onClick={handleSave}
-                      disabled={!isFormValid}
+                      disabled={!isFormValid || isSaving}
                       className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${
-                        isFormValid
-                          ? "bg-green-600 hover:bg-green-700 text-white"
+                        isFormValid && !isSaving
+                          ? "bg-green-600 hover:bg-green-700 text-white cursor-pointer"
                           : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                       }`}
                     >
-                      <Save className="w-4 h-4" />
-                      {translations.save}
+                      {isSaving ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          {translations.saving}
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          {translations.save}
+                        </>
+                      )}
                     </button>
                   </>
                 )}
@@ -662,15 +733,24 @@ const Cities = () => {
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setIsDeleteConfirmOpen(false)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                disabled={isSaving}
+                className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {translations.deleteNo}
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
+                disabled={isSaving}
+                className={`px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                {translations.deleteYes}
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2"></div>
+                    {translations.saving}
+                  </>
+                ) : (
+                  translations.deleteYes
+                )}
               </button>
             </div>
           </div>

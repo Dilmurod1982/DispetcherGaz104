@@ -25,8 +25,12 @@ import {
   Settings,
   PlusCircle,
   Hash,
+  Building,
 } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
+import useAuthStore from "../../store/authStore";
+import useLogger from "../../hooks/useLogger";
+import { ActionTypes } from "../../services/logger";
 import { toast } from "react-toastify";
 
 // Компонент модального окна для создания счетчика (только модель)
@@ -123,9 +127,12 @@ const MeterModal = ({ isOpen, onClose, onSave, translations }) => {
 
 const Nodes = () => {
   const { script } = useLanguageStore();
+  const { user, userData } = useAuthStore();
+  const { log } = useLogger();
   const [nodes, setNodes] = useState([]);
   const [grsList, setGrsList] = useState([]);
   const [meters, setMeters] = useState([]);
+  const [cities, setCities] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -135,6 +142,9 @@ const Nodes = () => {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isMeterModalOpen, setIsMeterModalOpen] = useState(false);
+
+  // Проверка, является ли пользователь админом
+  const isAdmin = userData?.role === "admin" || userData?.role === "Админ";
 
   const translations = {
     title: script === "latin" ? "Tugunlar" : "Тугунлар",
@@ -147,6 +157,7 @@ const Nodes = () => {
         : "Номи ёки ГРС бўйича қидириш",
     grs: script === "latin" ? "GTS (GRS)" : "ГТШ (ГРС)",
     name: script === "latin" ? "Nomi yoki raqami" : "Номи ёки рақами",
+    city: script === "latin" ? "Tuman/shahar" : "Туман/шаҳар",
     consumers: script === "latin" ? "Iste'molchilari" : "Истеъмолчилари",
     meter: script === "latin" ? "Hisoblagich" : "Ҳисоблагич",
     meterSerial: script === "latin" ? "Zavod raqami" : "Завод рақами",
@@ -157,6 +168,7 @@ const Nodes = () => {
     view: script === "latin" ? "Tugun ma'lumotlari" : "Тугун маълумотлари",
     grsLabel: script === "latin" ? "GTS (GRS)" : "ГТШ (ГРС)",
     nameLabel: script === "latin" ? "Nomi yoki raqami" : "Номи ёки рақами",
+    cityLabel: script === "latin" ? "Tugun egasi" : "Тугун эгаси",
     consumersLabel: script === "latin" ? "Iste'molchilari" : "Истеъмолчилари",
     meterLabel: script === "latin" ? "Hisoblagich" : "Ҳисоблагич",
     meterSerialLabel: script === "latin" ? "Zavod raqami" : "Завод рақами",
@@ -178,6 +190,8 @@ const Nodes = () => {
     deleteNo: script === "latin" ? "Yo'q" : "Йўқ",
     required: script === "latin" ? "Majburiy maydon" : "Мажбурий майдон",
     selectGrs: script === "latin" ? "GTS tanlang" : "ГТШ танланг",
+    selectCity:
+      script === "latin" ? "Tuman/shahar tanlang" : "Туман/шаҳар танланг",
     selectConsumer:
       script === "latin" ? "Iste'molchini tanlang" : "Истеъмолчини танланг",
     selectMeter:
@@ -219,6 +233,8 @@ const Nodes = () => {
       available: script === "latin" ? "Mavjud" : "Мавжуд",
       notAvailable: script === "latin" ? "Mavjud emas" : "Мавжуд эмас",
     },
+    city: script === "latin" ? "shahar" : "шаҳар",
+    district: script === "latin" ? "tuman" : "туман",
   };
 
   useEffect(() => {
@@ -248,6 +264,13 @@ const Nodes = () => {
         ...doc.data(),
       }));
       setMeters(metersData);
+
+      const citiesSnapshot = await getDocs(collection(db, "cities"));
+      const citiesData = citiesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setCities(citiesData);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error(translations.error);
@@ -260,6 +283,8 @@ const Nodes = () => {
     grsId: "",
     grsName: "",
     name: "",
+    cityId: "",
+    cityName: "",
     consumer: "",
     meterId: "",
     meterName: "",
@@ -295,6 +320,31 @@ const Nodes = () => {
           ...prev,
           grsId: selectedGrs.id,
           grsName: selectedGrs.name,
+        }));
+      }
+    }
+  };
+
+  const handleCityChange = (cityId) => {
+    const selectedCity = cities.find((city) => city.id === cityId);
+    if (selectedCity) {
+      const type =
+        selectedCity.type === "Город"
+          ? translations.city
+          : translations.district;
+      const displayName = `${selectedCity.name} ${type}`;
+
+      if (isCreating) {
+        setNewNode((prev) => ({
+          ...prev,
+          cityId: selectedCity.id,
+          cityName: displayName,
+        }));
+      } else {
+        setSelectedNode((prev) => ({
+          ...prev,
+          cityId: selectedCity.id,
+          cityName: displayName,
         }));
       }
     }
@@ -342,7 +392,6 @@ const Nodes = () => {
 
       setMeters((prev) => [...prev, newMeter]);
 
-      // Автоматически выбираем созданный счетчик
       if (isCreating) {
         setNewNode((prev) => ({
           ...prev,
@@ -362,6 +411,12 @@ const Nodes = () => {
       toast.success(
         script === "latin" ? "Hisoblagich qo'shildi" : "Ҳисоблагич қўшилди",
       );
+
+      // Логируем создание счетчика
+      await log(ActionTypes.NODE_CREATE, {
+        action: "meter_created",
+        meterName: meterName,
+      });
     } catch (error) {
       console.error("Error saving meter:", error);
       throw error;
@@ -375,12 +430,23 @@ const Nodes = () => {
   };
 
   const handleCreateNode = () => {
+    // Только админ может создавать узлы
+    if (!isAdmin) {
+      toast.warning(
+        script === "latin"
+          ? "Faqat administratorlar tugun qo'shishi mumkin"
+          : "Фақат администраторлар тугун қўшиши мумкин",
+      );
+      return;
+    }
     setIsCreating(true);
     setIsModalOpen(true);
     setNewNode({
       grsId: "",
       grsName: "",
       name: "",
+      cityId: "",
+      cityName: "",
       consumer: "",
       meterId: "",
       meterName: "",
@@ -388,6 +454,9 @@ const Nodes = () => {
       subscale: "",
     });
     setIsSaving(false);
+
+    // Логируем открытие формы создания
+    log(ActionTypes.NODE_CREATE, { action: "open_form" });
   };
 
   const handleCloseModal = () => {
@@ -401,6 +470,15 @@ const Nodes = () => {
   };
 
   const handleEdit = () => {
+    // Только админ может редактировать
+    if (!isAdmin) {
+      toast.warning(
+        script === "latin"
+          ? "Faqat administratorlar tugunni tahrirlashi mumkin"
+          : "Фақат администраторлар тугунни таҳрирлаши мумкин",
+      );
+      return;
+    }
     setIsEditMode(true);
     setIsSaving(false);
   };
@@ -430,12 +508,35 @@ const Nodes = () => {
           ...newNode,
           createdAt: new Date(),
         });
+
+        // Логируем создание узла
+        await log(ActionTypes.NODE_CREATE, {
+          nodeName: newNode.name,
+          grsName: newNode.grsName,
+          cityName: newNode.cityName,
+          consumer: newNode.consumer,
+          meterName: newNode.meterName,
+          meterSerial: newNode.meterSerial,
+        });
+
         toast.success(script === "latin" ? "Tugun qo'shildi" : "Тугун қўшилди");
       } else {
         await updateDoc(doc(db, "nodes", selectedNode.id), {
           ...selectedNode,
           updatedAt: new Date(),
         });
+
+        // Логируем обновление узла
+        await log(ActionTypes.NODE_UPDATE, {
+          nodeId: selectedNode.id,
+          nodeName: selectedNode.name,
+          grsName: selectedNode.grsName,
+          cityName: selectedNode.cityName,
+          consumer: selectedNode.consumer,
+          meterName: selectedNode.meterName,
+          meterSerial: selectedNode.meterSerial,
+        });
+
         toast.success(
           script === "latin" ? "Tugun yangilandi" : "Тугун янгиланди",
         );
@@ -450,9 +551,28 @@ const Nodes = () => {
   };
 
   const handleDelete = async () => {
+    // Только админ может удалять
+    if (!isAdmin) {
+      toast.warning(
+        script === "latin"
+          ? "Faqat administratorlar tugunni o'chirishi mumkin"
+          : "Фақат администраторлар тугунни ўчириши мумкин",
+      );
+      return;
+    }
     setIsSaving(true);
     try {
+      const nodeToDelete = selectedNode;
       await deleteDoc(doc(db, "nodes", selectedNode.id));
+
+      // Логируем удаление узла
+      await log(ActionTypes.NODE_DELETE, {
+        nodeId: nodeToDelete.id,
+        nodeName: nodeToDelete.name,
+        grsName: nodeToDelete.grsName,
+        cityName: nodeToDelete.cityName,
+      });
+
       toast.success(script === "latin" ? "Tugun o'chirildi" : "Тугун ўчирилди");
       await loadData();
       handleCloseModal();
@@ -463,10 +583,18 @@ const Nodes = () => {
     }
   };
 
+  // Функция для очистки названия от скобок
+  const cleanCityName = (name) => {
+    if (!name) return translations.notSpecified;
+    // Удаляем скобки и все что внутри них: "Farg'ona (shahar)" -> "Farg'ona shahar"
+    return name.replace(/[()]/g, "").trim();
+  };
+
   const filteredNodes = nodes.filter(
     (node) =>
       node.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      node.grsName?.toLowerCase().includes(searchTerm.toLowerCase()),
+      node.grsName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      node.cityName?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const isFormValid = checkFormValidity();
@@ -517,13 +645,16 @@ const Nodes = () => {
             {translations.subtitle}
           </p>
         </div>
-        <button
-          onClick={handleCreateNode}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
-        >
-          <Plus size={18} />
-          {translations.addNode}
-        </button>
+        {/* Кнопка добавления - показываем только админам */}
+        {isAdmin && (
+          <button
+            onClick={handleCreateNode}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
+          >
+            <Plus size={18} />
+            {translations.addNode}
+          </button>
+        )}
       </div>
 
       <div className="mb-6">
@@ -558,9 +689,12 @@ const Nodes = () => {
                   {translations.grs}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">
-                  {translations.consumers}
+                  {translations.city}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden xl:table-cell">
+                  {translations.consumers}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden 2xl:table-cell">
                   {translations.meter}
                 </th>
               </tr>
@@ -589,11 +723,17 @@ const Nodes = () => {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden lg:table-cell">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-gray-400" />
+                      <span>{cleanCityName(node.cityName)}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden xl:table-cell">
                     <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
                       {getConsumerLabel(node.consumer)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden xl:table-cell">
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden 2xl:table-cell">
                     <div className="flex items-center gap-2">
                       <Cpu className="w-4 h-4 text-gray-400" />
                       <span>
@@ -621,7 +761,7 @@ const Nodes = () => {
                 ? translations.searchPlaceholder
                 : translations.startAdding}
             </p>
-            {!searchTerm && (
+            {!searchTerm && isAdmin && (
               <button
                 onClick={handleCreateNode}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
@@ -701,6 +841,34 @@ const Nodes = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {translations.cityLabel}
+                  </label>
+                  <select
+                    value={
+                      isCreating ? newNode.cityId : selectedNode?.cityId || ""
+                    }
+                    onChange={(e) => handleCityChange(e.target.value)}
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <option value="">{translations.selectCity}</option>
+                    {cities.map((city) => {
+                      const type =
+                        city.type === "Город"
+                          ? translations.city
+                          : translations.district;
+                      const displayName = `${city.name} ${type}`;
+                      return (
+                        <option key={city.id} value={city.id}>
+                          {displayName}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     {translations.consumersLabel}
                   </label>
                   <select
@@ -749,7 +917,6 @@ const Nodes = () => {
                   </select>
                 </div>
 
-                {/* Заводской номер счетчика - в основном окне */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     {translations.meterSerialLabel}
@@ -819,22 +986,27 @@ const Nodes = () => {
               <div className="flex flex-wrap gap-2 justify-end">
                 {!isCreating && !isEditMode && (
                   <>
-                    <button
-                      onClick={() => setIsDeleteConfirmOpen(true)}
-                      disabled={isSaving}
-                      className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      {translations.deleteBtn}
-                    </button>
-                    <button
-                      onClick={handleEdit}
-                      disabled={isSaving}
-                      className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <Edit className="w-4 h-4" />
-                      {translations.editBtn}
-                    </button>
+                    {/* Кнопки Ўчириш и Таҳрирлаш - показываем только админам */}
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => setIsDeleteConfirmOpen(true)}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {translations.deleteBtn}
+                        </button>
+                        <button
+                          onClick={handleEdit}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Edit className="w-4 h-4" />
+                          {translations.editBtn}
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={handleCloseModal}
                       disabled={isSaving}

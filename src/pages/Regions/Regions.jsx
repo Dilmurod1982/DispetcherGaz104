@@ -21,10 +21,15 @@ import {
   CheckCircle,
 } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
+import useAuthStore from "../../store/authStore";
+import useLogger from "../../hooks/useLogger";
+import { ActionTypes } from "../../services/logger";
 import { toast } from "react-toastify";
 
 const Regions = () => {
   const { script } = useLanguageStore();
+  const { userData } = useAuthStore();
+  const { log } = useLogger();
   const [regions, setRegions] = useState([]);
   const [selectedRegion, setSelectedRegion] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,6 +38,10 @@ const Regions = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Проверка, является ли пользователь админом
+  const isAdmin = userData?.role === "admin" || userData?.role === "Админ";
 
   const translations = {
     title: script === "latin" ? "Viloyatlar" : "Вилоятлар",
@@ -61,6 +70,7 @@ const Regions = () => {
     areaLabel: script === "latin" ? "Maydoni" : "Майдони",
     cancel: script === "latin" ? "Bekor qilish" : "Бекор қилиш",
     save: script === "latin" ? "Saqlash" : "Сақлаш",
+    saving: script === "latin" ? "Saqlanmoqda..." : "Сақланмоқда...",
     close: script === "latin" ? "Yopish" : "Ёпиш",
     editBtn: script === "latin" ? "Tahrirlash" : "Таҳрирлаш",
     deleteBtn: script === "latin" ? "O'chirish" : "Ўчириш",
@@ -86,6 +96,10 @@ const Regions = () => {
     notSpecified: script === "latin" ? "Ko'rsatilmagan" : "Кўрсатилмаган",
     total: script === "latin" ? "Jami" : "Жами",
     regionsCount: script === "latin" ? "ta viloyat" : "та вилоят",
+    noPermission:
+      script === "latin"
+        ? "Faqat administratorlar viloyat qo'shishi mumkin"
+        : "Фақат администраторлар вилоят қўшиши мумкин",
   };
 
   useEffect(() => {
@@ -140,6 +154,10 @@ const Regions = () => {
   };
 
   const handleCreateRegion = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsCreating(true);
     setIsModalOpen(true);
     setNewRegion({
@@ -149,18 +167,40 @@ const Regions = () => {
       area: "",
       capital: "",
     });
+    setIsSaving(false);
+    log(ActionTypes.REGION_CREATE, { action: "open_form" });
   };
 
   const handleCloseModal = () => {
+    if (isSaving) return;
     setIsModalOpen(false);
     setIsEditMode(false);
     setIsCreating(false);
     setSelectedRegion(null);
     setIsDeleteConfirmOpen(false);
+    setIsSaving(false);
   };
 
   const handleEdit = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
     setIsEditMode(true);
+    setIsSaving(false);
+  };
+
+  const handleCancel = () => {
+    if (isSaving) return;
+    if (isCreating) {
+      handleCloseModal();
+    } else {
+      setIsEditMode(false);
+      const originalRegion = regions.find(
+        (region) => region.id === selectedRegion?.id,
+      );
+      setSelectedRegion(originalRegion ? { ...originalRegion } : null);
+    }
   };
 
   const handleSave = async () => {
@@ -169,12 +209,18 @@ const Regions = () => {
       return;
     }
 
+    setIsSaving(true);
+
     try {
       if (isCreating) {
         await addDoc(collection(db, "regions"), {
           ...newRegion,
           country: "O'zbekiston",
           createdAt: new Date(),
+        });
+        await log(ActionTypes.REGION_CREATE, {
+          regionName: newRegion.name,
+          regionCode: newRegion.code,
         });
         toast.success(
           script === "latin" ? "Viloyat qo'shildi" : "Вилоят қўшилди",
@@ -183,6 +229,10 @@ const Regions = () => {
         await updateDoc(doc(db, "regions", selectedRegion.id), {
           ...selectedRegion,
           updatedAt: new Date(),
+        });
+        await log(ActionTypes.REGION_UPDATE, {
+          regionId: selectedRegion.id,
+          regionName: selectedRegion.name,
         });
         toast.success(
           script === "latin" ? "Viloyat yangilandi" : "Вилоят янгиланди",
@@ -195,12 +245,23 @@ const Regions = () => {
       toast.error(
         script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
       );
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
+    setIsSaving(true);
     try {
+      const regionToDelete = selectedRegion;
       await deleteDoc(doc(db, "regions", selectedRegion.id));
+      await log(ActionTypes.REGION_DELETE, {
+        regionId: regionToDelete.id,
+        regionName: regionToDelete.name,
+      });
       toast.success(
         script === "latin" ? "Viloyat o'chirildi" : "Вилоят ўчирилди",
       );
@@ -211,6 +272,7 @@ const Regions = () => {
       toast.error(
         script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
       );
+      setIsSaving(false);
     }
   };
 
@@ -243,13 +305,15 @@ const Regions = () => {
             {translations.subtitle}
           </p>
         </div>
-        <button
-          onClick={handleCreateRegion}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
-        >
-          <Plus size={18} />
-          {translations.addRegion}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={handleCreateRegion}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
+          >
+            <Plus size={18} />
+            {translations.addRegion}
+          </button>
+        )}
       </div>
 
       {/* Поиск */}
@@ -356,7 +420,7 @@ const Regions = () => {
                 ? translations.searchPlaceholder
                 : translations.startAdding}
             </p>
-            {!searchTerm && (
+            {!searchTerm && isAdmin && (
               <button
                 onClick={handleCreateRegion}
                 className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
@@ -372,7 +436,7 @@ const Regions = () => {
       {isModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-          onClick={handleCloseModal}
+          onClick={isSaving ? undefined : handleCloseModal}
         >
           <div
             className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-lg max-h-[90vh] overflow-hidden"
@@ -389,7 +453,8 @@ const Regions = () => {
               </h2>
               <button
                 onClick={handleCloseModal}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                disabled={isSaving}
+                className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
               </button>
@@ -408,8 +473,8 @@ const Regions = () => {
                       isCreating ? newRegion.name : selectedRegion?.name || ""
                     }
                     onChange={(e) => handleInputChange("name", e.target.value)}
-                    disabled={!isCreating && !isEditMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm"
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                     placeholder={translations.name}
                   />
                 </div>
@@ -425,8 +490,8 @@ const Regions = () => {
                       isCreating ? newRegion.code : selectedRegion?.code || ""
                     }
                     onChange={(e) => handleInputChange("code", e.target.value)}
-                    disabled={!isCreating && !isEditMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm"
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                     placeholder="TAS"
                   />
                 </div>
@@ -445,8 +510,8 @@ const Regions = () => {
                     onChange={(e) =>
                       handleInputChange("capital", e.target.value)
                     }
-                    disabled={!isCreating && !isEditMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm"
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                     placeholder={translations.capitalLabel}
                   />
                 </div>
@@ -466,8 +531,8 @@ const Regions = () => {
                       onChange={(e) =>
                         handleInputChange("population", e.target.value)
                       }
-                      disabled={!isCreating && !isEditMode}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm"
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                       placeholder="3.5 млн"
                     />
                   </div>
@@ -487,8 +552,8 @@ const Regions = () => {
                         onChange={(e) =>
                           handleInputChange("area", e.target.value)
                         }
-                        disabled={!isCreating && !isEditMode}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm pr-12"
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm pr-12 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                         placeholder="0"
                       />
                       <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
@@ -523,23 +588,30 @@ const Regions = () => {
               <div className="flex flex-wrap gap-2 justify-end">
                 {!isCreating && !isEditMode && (
                   <>
-                    <button
-                      onClick={() => setIsDeleteConfirmOpen(true)}
-                      className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      {translations.deleteBtn}
-                    </button>
-                    <button
-                      onClick={handleEdit}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
-                    >
-                      <Edit className="w-4 h-4" />
-                      {translations.editBtn}
-                    </button>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => setIsDeleteConfirmOpen(true)}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {translations.deleteBtn}
+                        </button>
+                        <button
+                          onClick={handleEdit}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Edit className="w-4 h-4" />
+                          {translations.editBtn}
+                        </button>
+                      </>
+                    )}
                     <button
                       onClick={handleCloseModal}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                      disabled={isSaving}
+                      className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {translations.close}
                     </button>
@@ -550,21 +622,31 @@ const Regions = () => {
                   <>
                     <button
                       onClick={handleCancel}
-                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                      disabled={isSaving}
+                      className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       {translations.cancel}
                     </button>
                     <button
                       onClick={handleSave}
-                      disabled={!isFormValid}
+                      disabled={!isFormValid || isSaving}
                       className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${
-                        isFormValid
-                          ? "bg-green-600 hover:bg-green-700 text-white"
+                        isFormValid && !isSaving
+                          ? "bg-green-600 hover:bg-green-700 text-white cursor-pointer"
                           : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                       }`}
                     >
-                      <Save className="w-4 h-4" />
-                      {translations.save}
+                      {isSaving ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          {translations.saving}
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          {translations.save}
+                        </>
+                      )}
                     </button>
                   </>
                 )}
@@ -600,15 +682,24 @@ const Regions = () => {
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setIsDeleteConfirmOpen(false)}
-                className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm"
+                disabled={isSaving}
+                className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {translations.deleteNo}
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
+                disabled={isSaving}
+                className={`px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                {translations.deleteYes}
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2"></div>
+                    {translations.saving}
+                  </>
+                ) : (
+                  translations.deleteYes
+                )}
               </button>
             </div>
           </div>

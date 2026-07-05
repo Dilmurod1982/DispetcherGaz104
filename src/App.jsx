@@ -1,9 +1,16 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from "react-router-dom";
 import { useEffect } from "react";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Login from "./pages/Login/Login";
 import Dashboard from "./pages/Dashboard/Dashboard";
+import DailyInfo from "./pages/DailyInfo/DailyInfo";
 import Regions from "./pages/Regions/Regions";
 import Cities from "./pages/Cities/Cities";
 import Grs from "./pages/Grs/Grs";
@@ -11,12 +18,15 @@ import Nodes from "./pages/Nodes/Nodes";
 import Interdistrict from "./pages/Interdistrict/Interdistrict";
 import Grp from "./pages/Grp/Grp";
 import Users from "./pages/Users/Users";
+import Logs from "./pages/Logs/Logs";
 import MainLayout from "./components/Layout/MainLayout";
 import ProtectedRoute from "./components/Layout/ProtectedRoute";
 import useThemeStore from "./store/themeStore";
 import useAuthStore from "./store/authStore";
 import useLanguageStore from "./store/languageStore";
+import Consumers from "./pages/Consumers/Consumers";
 
+// Временные компоненты для пустых страниц
 const EmptyPage = ({ title }) => {
   const { script } = useLanguageStore();
   return (
@@ -32,6 +42,20 @@ const EmptyPage = ({ title }) => {
       </p>
     </div>
   );
+};
+
+// Компонент для защиты маршрута /logs
+const LogsRoute = () => {
+  const { isDilik } = useAuthStore();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isDilik()) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isDilik, navigate]);
+
+  return isDilik() ? <Logs /> : null;
 };
 
 const App = () => {
@@ -68,6 +92,7 @@ const App = () => {
           }
         >
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/daily-info" element={<DailyInfo />} />
 
           {/* Регионы */}
           <Route path="/regions/viloyat" element={<Regions />} />
@@ -90,6 +115,11 @@ const App = () => {
 
           {/* Пользователи */}
           <Route path="/users" element={<Users />} />
+
+          <Route path="/consumers" element={<Consumers />} />
+
+          {/* Логи - только для dilik@mail.ru */}
+          <Route path="/logs" element={<LogsRoute />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

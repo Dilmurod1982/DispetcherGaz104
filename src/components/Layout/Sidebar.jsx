@@ -14,21 +14,26 @@ import {
   FiGlobe,
   FiSliders,
   FiFolder,
+  FiCalendar,
+  FiClipboard,
 } from "react-icons/fi";
 import useLanguageStore from "../../store/languageStore";
 import useAuthStore from "../../store/authStore";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { script } = useLanguageStore();
-  const { logout } = useAuthStore();
+  const { logout, isAdmin, isDilik } = useAuthStore();
   const navigate = useNavigate();
 
-  // Состояния для раскрытия подменю
   const [openRegions, setOpenRegions] = useState(false);
   const [openDataPoints, setOpenDataPoints] = useState(false);
 
+  const userIsAdmin = isAdmin();
+  const userIsDilik = isDilik();
+
   const translations = {
     dashboard: script === "latin" ? "Boshqaruv paneli" : "Бошқарув панели",
+    dailyInfo: script === "latin" ? "Kunlik ma'lumotlar" : "Кунлик маълумотлар",
     regions: script === "latin" ? "Xududlar" : "Ҳудудлар",
     regionsRu: "Регионы",
     viloyat: script === "latin" ? "Viloyat" : "Вилоят",
@@ -50,8 +55,11 @@ const Sidebar = ({ isOpen, onClose }) => {
     grpRu: "ГРП",
     reports: script === "latin" ? "Hisobotlar" : "Ҳисоботлар",
     reportsRu: "Отчеты",
+    consumers: script === "latin" ? "Iste'molchilar" : "Истеъмолчилар",
+    consumersRu: "Потребители",
     users: script === "latin" ? "Foydalanuvchilar" : "Фойдаланувчилар",
     usersRu: "Пользователи",
+    logs: script === "latin" ? "Amallar jurnali" : "Амаллар журнали",
     logout: script === "latin" ? "Chiqish" : "Чиқиш",
   };
 
@@ -150,6 +158,22 @@ const Sidebar = ({ isOpen, onClose }) => {
           >
             <FiHome className="w-5 h-5" />
             <span className="font-medium">{translations.dashboard}</span>
+          </NavLink>
+
+          {/* Кунлик маълумотлар */}
+          <NavLink
+            to="/daily-info"
+            onClick={onClose}
+            className={({ isActive }) =>
+              `flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                isActive
+                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shadow-sm"
+                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              }`
+            }
+          >
+            <FiCalendar className="w-5 h-5" />
+            <span className="font-medium">{translations.dailyInfo}</span>
           </NavLink>
 
           {/* Худудлар / Регионы */}
@@ -302,9 +326,9 @@ const Sidebar = ({ isOpen, onClose }) => {
             <span className="font-medium">{translations.reports}</span>
           </NavLink>
 
-          {/* Фойдаланувчилар / Пользователи */}
+          {/* Истеъмолчилар / Потребители */}
           <NavLink
-            to="/users"
+            to="/consumers"
             onClick={onClose}
             className={({ isActive }) =>
               `flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
@@ -315,8 +339,44 @@ const Sidebar = ({ isOpen, onClose }) => {
             }
           >
             <FiUsers className="w-5 h-5" />
-            <span className="font-medium">{translations.users}</span>
+            <span className="font-medium">{translations.consumers}</span>
           </NavLink>
+
+          {/* Фойдаланувчилар / Пользователи - только для админов */}
+          {userIsAdmin && (
+            <NavLink
+              to="/users"
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                  isActive
+                    ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shadow-sm"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                }`
+              }
+            >
+              <FiUsers className="w-5 h-5" />
+              <span className="font-medium">{translations.users}</span>
+            </NavLink>
+          )}
+
+          {/* Амаллар журнали / Логи - только для dilik@mail.ru */}
+          {userIsDilik && (
+            <NavLink
+              to="/logs"
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                  isActive
+                    ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shadow-sm"
+                    : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                }`
+              }
+            >
+              <FiClipboard className="w-5 h-5" />
+              <span className="font-medium">{translations.logs}</span>
+            </NavLink>
+          )}
         </nav>
 
         {/* Нижняя часть с кнопкой выхода */}

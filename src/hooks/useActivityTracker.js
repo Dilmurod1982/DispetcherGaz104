@@ -1,11 +1,13 @@
 import { useEffect } from "react";
-import useAuthStore from "../store/authStore.js";
+import useAuthStore from "../store/authStore";
 
 const useActivityTracker = () => {
-  const { updateActivity } = useAuthStore();
+  const { updateActivity, user } = useAuthStore();
 
   useEffect(() => {
-    // События, которые обновляют активность
+    // Если пользователь не залогинен, не отслеживаем активность
+    if (!user) return;
+
     const events = [
       "mousedown",
       "mousemove",
@@ -49,7 +51,7 @@ const useActivityTracker = () => {
         clearTimeout(timeoutId);
       }
     };
-  }, [updateActivity]);
+  }, [updateActivity, user]);
 };
 
 export default useActivityTracker;

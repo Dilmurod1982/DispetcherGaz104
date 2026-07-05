@@ -7,10 +7,11 @@ import Sidebar from "./Sidebar";
 import useAuthStore from "../../store/authStore";
 import useLanguageStore from "../../store/languageStore";
 import useActivityTracker from "../../hooks/useActivityTracker";
+import { logAction, ActionTypes } from "../../services/logger";
 
 const MainLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { user, logout } = useAuthStore();
+  const { user, userData, logout } = useAuthStore();
   const { script } = useLanguageStore();
   const navigate = useNavigate();
 
@@ -22,12 +23,45 @@ const MainLayout = () => {
   };
 
   const handleLogout = async () => {
+    const userEmail = user?.email;
+    const userRole = userData?.role;
+
+    // Логируем выход
+    await logAction(ActionTypes.USER_LOGOUT, {
+      email: userEmail,
+      role: userRole,
+    });
+
     await logout();
     navigate("/login");
   };
 
+  // Проверяем сессию при монтировании
+  useState(() => {
+    const checkSession = () => {
+      const sessionStart = localStorage.getItem("sessionStartTime");
+      const lastActivityTime = localStorage.getItem("lastActivityTime");
+
+      if (sessionStart && lastActivityTime) {
+        const currentTime = Date.now();
+        const timeSinceLastActivity = currentTime - parseInt(lastActivityTime);
+        const SESSION_TIMEOUT = 10 * 60 * 1000; // 10 минут
+
+        if (timeSinceLastActivity > SESSION_TIMEOUT) {
+          logout();
+          navigate("/login");
+        }
+      }
+    };
+
+    // Проверяем каждые 30 секунд
+    const interval = setInterval(checkSession, 30000);
+    return () => clearInterval(interval);
+  }, [logout, navigate]);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+      {/* Навбар */}
       <nav className="bg-white dark:bg-gray-800 shadow-lg sticky top-0 z-30 transition-colors duration-300">
         <div className="container mx-auto px-4">
           <div className="flex justify-between items-center h-16">
@@ -70,11 +104,11 @@ const MainLayout = () => {
 
             <div className="flex items-center space-x-3">
               <span className="text-sm text-gray-600 dark:text-gray-300 hidden md:inline">
-                {user?.email}
+                {user?.email} {userData?.role && `(${userData.role})`}
               </span>
               <button
                 onClick={handleLogout}
-                className="px-3 py-1 text-sm bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200"
+                className="px-3 py-1.5 text-sm bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200"
               >
                 {script === "latin" ? "Chiqish" : "Чиқиш"}
               </button>
