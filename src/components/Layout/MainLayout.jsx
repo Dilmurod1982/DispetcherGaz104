@@ -7,6 +7,7 @@ import Sidebar from "./Sidebar";
 import useAuthStore from "../../store/authStore";
 import useLanguageStore from "../../store/languageStore";
 import useActivityTracker from "../../hooks/useActivityTracker";
+import useReportNotifications from "../../hooks/useReportNotifications";
 import { logAction, ActionTypes } from "../../services/logger";
 
 const MainLayout = () => {
@@ -14,6 +15,8 @@ const MainLayout = () => {
   const { user, userData, logout } = useAuthStore();
   const { script } = useLanguageStore();
   const navigate = useNavigate();
+
+  useReportNotifications();
 
   // Отслеживаем активность пользователя
   useActivityTracker();

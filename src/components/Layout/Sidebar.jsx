@@ -16,6 +16,8 @@ import {
   FiFolder,
   FiCalendar,
   FiClipboard,
+  FiDatabase,
+  FiBarChart2,
 } from "react-icons/fi";
 import useLanguageStore from "../../store/languageStore";
 import useAuthStore from "../../store/authStore";
@@ -27,6 +29,7 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const [openRegions, setOpenRegions] = useState(false);
   const [openDataPoints, setOpenDataPoints] = useState(false);
+  const [openReports, setOpenReports] = useState(false);
 
   const userIsAdmin = isAdmin();
   const userIsDilik = isDilik();
@@ -55,6 +58,9 @@ const Sidebar = ({ isOpen, onClose }) => {
     grpRu: "ГРП",
     reports: script === "latin" ? "Hisobotlar" : "Ҳисоботлар",
     reportsRu: "Отчеты",
+    dataEntry: script === "latin" ? "Ma'lumot kiritish" : "Маълумот киритиш",
+    viewReports:
+      script === "latin" ? "Hisobotlarni ko'rish" : "Ҳисоботларни кўриш",
     consumers: script === "latin" ? "Iste'molchilar" : "Истеъмолчилар",
     consumersRu: "Потребители",
     users: script === "latin" ? "Foydalanuvchilar" : "Фойдаланувчилар",
@@ -75,6 +81,10 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const toggleDataPoints = () => {
     setOpenDataPoints(!openDataPoints);
+  };
+
+  const toggleReports = () => {
+    setOpenReports(!openReports);
   };
 
   return (
@@ -310,21 +320,57 @@ const Sidebar = ({ isOpen, onClose }) => {
             )}
           </div>
 
-          {/* Ҳисоботлар / Отчеты */}
-          <NavLink
-            to="/reports"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                isActive
-                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shadow-sm"
-                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-              }`
-            }
-          >
-            <FiFileText className="w-5 h-5" />
-            <span className="font-medium">{translations.reports}</span>
-          </NavLink>
+          {/* Ҳисоботлар / Отчеты - с подменю */}
+          <div>
+            <button
+              onClick={toggleReports}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+            >
+              <div className="flex items-center space-x-3">
+                <FiFileText className="w-5 h-5" />
+                <span className="font-medium">{translations.reports}</span>
+              </div>
+              {openReports ? (
+                <FiChevronDown className="w-4 h-4" />
+              ) : (
+                <FiChevronRight className="w-4 h-4" />
+              )}
+            </button>
+
+            {openReports && (
+              <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 dark:border-gray-700 pl-3">
+                <NavLink
+                  to="/reports/data-entry"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-sm ${
+                      isActive
+                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`
+                  }
+                >
+                  <FiDatabase className="w-4 h-4" />
+                  <span>{translations.dataEntry}</span>
+                </NavLink>
+
+                <NavLink
+                  to="/reports/view"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-sm ${
+                      isActive
+                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`
+                  }
+                >
+                  <FiBarChart2 className="w-4 h-4" />
+                  <span>{translations.viewReports}</span>
+                </NavLink>
+              </div>
+            )}
+          </div>
 
           {/* Истеъмолчилар / Потребители */}
           <NavLink

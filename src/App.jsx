@@ -25,6 +25,8 @@ import useThemeStore from "./store/themeStore";
 import useAuthStore from "./store/authStore";
 import useLanguageStore from "./store/languageStore";
 import Consumers from "./pages/Consumers/Consumers";
+import DataEntry from "./pages/Reports/DataEntry/DataEntry";
+import ReportView from "./pages/Reports/ReportView/ReportView";
 
 // Временные компоненты для пустых страниц
 const EmptyPage = ({ title }) => {
@@ -117,6 +119,9 @@ const App = () => {
           <Route path="/users" element={<Users />} />
 
           <Route path="/consumers" element={<Consumers />} />
+          <Route path="/reports/data-entry" element={<DataEntry />} />
+          <Route path="/reports/view" element={<ReportView />} />
+          <Route path="/reports/view/:date/:hour" element={<ReportView />} />
 
           {/* Логи - только для dilik@mail.ru */}
           <Route path="/logs" element={<LogsRoute />} />
