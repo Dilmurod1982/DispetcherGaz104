@@ -18,6 +18,8 @@ import {
 import useLanguageStore from "../../../store/languageStore";
 import useAuthStore from "../../../store/authStore";
 import useReportStore from "../../../store/reportStore";
+import useLogger from "../../../hooks/useLogger";
+import { ActionTypes } from "../../../services/logger";
 import {
   getToday,
   getCurrentHour,
@@ -28,10 +30,12 @@ import {
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../../firebase/config";
 import { toast } from "react-toastify";
+import EditReportModal from "../../../components/Reports/EditReportModal.jsx";
 
 const DataEntry = () => {
   const { script } = useLanguageStore();
   const { user, userData } = useAuthStore();
+  const { log } = useLogger();
   const {
     reports,
     loading,
@@ -60,6 +64,10 @@ const DataEntry = () => {
   });
   const [loadingObjects, setLoadingObjects] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingReport, setEditingReport] = useState(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isReportSaved, setIsReportSaved] = useState(false);
 
   const translations = {
     title:
@@ -72,8 +80,8 @@ const DataEntry = () => {
     selectTime: script === "latin" ? "Vaqt tanlang" : "Вақт танланг",
     save: script === "latin" ? "Saqlash" : "Сақлаш",
     saving: script === "latin" ? "Saqlanmoqda..." : "Сақланмоқда...",
-    cancel: script === "latin" ? "Bekor qilish" : "Бекор қилиш",
     edit: script === "latin" ? "Tahrirlash" : "Таҳрирлаш",
+    cancel: script === "latin" ? "Bekor qilish" : "Бекор қилиш",
     delete: script === "latin" ? "O'chirish" : "Ўчириш",
     noData:
       script === "latin" ? "Ma'lumot mavjud emas" : "Маълумот мавжуд эмас",
@@ -123,6 +131,10 @@ const DataEntry = () => {
     total: script === "latin" ? "Jami" : "Жами",
     object: script === "latin" ? "Obyekt" : "Объект",
     search: script === "latin" ? "Qidirish..." : "Қидириш...",
+    fillRequired:
+      script === "latin"
+        ? "Iltimos, barcha maydonlarni to'ldiring"
+        : "Илтимос, барча майдонларни тўлдиринг",
   };
 
   // Загрузка прикрепленных объектов
@@ -160,7 +172,7 @@ const DataEntry = () => {
         });
       });
 
-      // Загрузка узлов (nodes) - с названием ГРС
+      // Загрузка узлов (nodes)
       const nodesQuery = query(
         collection(db, "nodes"),
         where("cityId", "in", assignedCities),
@@ -172,7 +184,6 @@ const DataEntry = () => {
           id: doc.id,
           ...data,
           category: "nodes",
-          // Отображаем: "Название узла (ГРС: Название ГРС)"
           displayName: `${data.name || data.id} (ГТШ: ${data.grsName || "—"})`,
         });
       });
@@ -278,10 +289,12 @@ const DataEntry = () => {
       setExistingReport(result.report);
       setFormData(result.report.data || {});
       setIsEditing(true);
+      setIsReportSaved(true);
     } else {
       setExistingReport(null);
       setFormData({});
       setIsEditing(false);
+      setIsReportSaved(false);
     }
   };
 
@@ -290,23 +303,106 @@ const DataEntry = () => {
     setSelectedHour(null);
     setIsEditing(false);
     setExistingReport(null);
+    setIsReportSaved(false);
+    setFormData({});
   };
 
   const handleHourSelect = (hour) => {
     setSelectedHour(hour);
+    setIsReportSaved(false);
   };
 
   const handleInputChange = (category, id, field, value) => {
+    // Если значение пустая строка - оставляем как есть
+    // Если число - сохраняем (0 разрешен)
+    const processedValue = value === "" ? "" : parseFloat(value);
+    // Если после парсинга получилось NaN, ставим 0
+    const finalValue = isNaN(processedValue) ? 0 : processedValue;
+
     setFormData((prev) => ({
       ...prev,
       [category]: {
         ...prev[category],
         [id]: {
           ...prev[category]?.[id],
-          [field]: value,
+          [field]: finalValue,
         },
       },
     }));
+  };
+
+  // Получение полей для категории
+  const getFieldsForCategory = (category) => {
+    const fields = {
+      grs: ["flow", "pressure"],
+      nodes: ["flow", "pressure"],
+      interdistrict: ["flow", "pressure"],
+      consumers: ["flow"],
+      grp: ["pressure"],
+    };
+    return fields[category] || [];
+  };
+
+  // Получение всех объектов в едином массиве для таблицы
+  const getAllItems = () => {
+    const items = [];
+
+    assignedObjects.grs.forEach((item) => {
+      items.push({ ...item, category: "grs", categoryLabel: translations.grs });
+    });
+
+    assignedObjects.nodes.forEach((item) => {
+      items.push({
+        ...item,
+        category: "nodes",
+        categoryLabel: translations.nodes,
+      });
+    });
+
+    assignedObjects.interdistrict.forEach((item) => {
+      items.push({
+        ...item,
+        category: "interdistrict",
+        categoryLabel: translations.interdistrict,
+      });
+    });
+
+    assignedObjects.consumers.forEach((item) => {
+      items.push({
+        ...item,
+        category: "consumers",
+        categoryLabel: translations.consumers,
+      });
+    });
+
+    assignedObjects.grp.forEach((item) => {
+      items.push({ ...item, category: "grp", categoryLabel: translations.grp });
+    });
+
+    return items;
+  };
+
+  // Проверка, все ли поля заполнены (0 считается валидным значением)
+  const hasAllFieldsFilled = () => {
+    const allItems = getAllItems();
+    if (allItems.length === 0) return false;
+
+    let allFilled = true;
+    allItems.forEach((item) => {
+      const itemData = formData[item.category]?.[item.id] || {};
+      const fields = getFieldsForCategory(item.category);
+
+      fields.forEach((field) => {
+        const value = itemData[field];
+        // Проверяем только на undefined, null и пустую строку
+        // 0 - валидное значение (означает что объект не работает/на ремонте)
+        if (value === undefined || value === null || value === "") {
+          allFilled = false;
+        }
+      });
+    });
+
+    return allFilled;
   };
 
   const handleSave = async () => {
@@ -316,6 +412,12 @@ const DataEntry = () => {
           ? "Iltimos, vaqtni tanlang"
           : "Илтимос, вақтни танланг",
       );
+      return;
+    }
+
+    // Проверяем, все ли поля заполнены
+    if (!hasAllFieldsFilled()) {
+      toast.warning(translations.fillRequired);
       return;
     }
 
@@ -333,14 +435,28 @@ const DataEntry = () => {
 
     const reportType = getReportTypeByHour(selectedHour);
 
-    const hasData = Object.keys(formData).some(
-      (category) => Object.keys(formData[category] || {}).length > 0,
-    );
+    // Создаем копию данных с добавлением displayName
+    const dataWithNames = {};
+    const categories = ["grs", "nodes", "interdistrict", "consumers", "grp"];
 
-    if (!hasData) {
-      toast.warning(translations.enterData);
-      return;
-    }
+    categories.forEach((cat) => {
+      dataWithNames[cat] = {};
+      const categoryData = formData[cat] || {};
+
+      Object.keys(categoryData).forEach((id) => {
+        const objectData = assignedObjects[cat]?.find((item) => item.id === id);
+        const displayName = objectData?.displayName || objectData?.name || id;
+
+        dataWithNames[cat][id] = {
+          ...categoryData[id],
+          displayName: displayName,
+          name: objectData?.name || id,
+          ...(cat === "nodes" && objectData?.grsName
+            ? { grsName: objectData.grsName }
+            : {}),
+        };
+      });
+    });
 
     const reportData = {
       type: reportType,
@@ -350,7 +466,7 @@ const DataEntry = () => {
       userName: userData?.displayName || user.email,
       date: selectedDate,
       hour: selectedHour,
-      data: formData,
+      data: dataWithNames,
       ...(reportType === "daily" && {
         totals: {
           totalPopulation: formData.totals?.totalPopulation || 0,
@@ -373,7 +489,20 @@ const DataEntry = () => {
           ? "Hisobot muvaffaqiyatli saqlandi"
           : "Ҳисобот муваффақиятли сақланди",
       );
+      setIsReportSaved(true);
+      setIsEditing(true);
       await loadReports(selectedDate);
+
+      // Обновляем existingReport
+      const updated = await getReportByTime(
+        selectedDate,
+        selectedHour,
+        regionId,
+      );
+      if (updated.success && updated.report) {
+        setExistingReport(updated.report);
+        setFormData(updated.report.data || {});
+      }
     } else {
       toast.error(
         result.error ||
@@ -382,60 +511,95 @@ const DataEntry = () => {
     }
   };
 
-  // Получение всех объектов в едином массиве для таблицы
-  const getAllItems = () => {
-    const items = [];
-
-    // ГРС
-    assignedObjects.grs.forEach((item) => {
-      items.push({ ...item, category: "grs", categoryLabel: translations.grs });
-    });
-
-    // Узлы
-    assignedObjects.nodes.forEach((item) => {
-      items.push({
-        ...item,
-        category: "nodes",
-        categoryLabel: translations.nodes,
-      });
-    });
-
-    // Межрайонные
-    assignedObjects.interdistrict.forEach((item) => {
-      items.push({
-        ...item,
-        category: "interdistrict",
-        categoryLabel: translations.interdistrict,
-      });
-    });
-
-    // Потребители
-    assignedObjects.consumers.forEach((item) => {
-      items.push({
-        ...item,
-        category: "consumers",
-        categoryLabel: translations.consumers,
-      });
-    });
-
-    // ГРП
-    assignedObjects.grp.forEach((item) => {
-      items.push({ ...item, category: "grp", categoryLabel: translations.grp });
-    });
-
-    return items;
+  // Открытие модального окна редактирования
+  const handleEditClick = () => {
+    if (existingReport) {
+      setEditingReport(existingReport);
+      setIsEditModalOpen(true);
+    }
   };
 
-  // Получение полей для категории
-  const getFieldsForCategory = (category) => {
-    const fields = {
-      grs: ["flow", "pressure"],
-      nodes: ["flow", "pressure"],
-      interdistrict: ["flow", "pressure"],
-      consumers: ["flow"],
-      grp: ["pressure"],
-    };
-    return fields[category] || [];
+  // Сохранение отредактированного отчета
+  const handleEditSave = async (updatedData) => {
+    setIsSavingEdit(true);
+    try {
+      const regionId = userData?.assignedCities?.[0];
+      const regionName = userData?.assignedCitiesNames?.[0];
+
+      const reportType = getReportTypeByHour(selectedHour);
+
+      // Сохраняем старые данные для логирования
+      const oldData = existingReport?.data || {};
+
+      const reportData = {
+        type: reportType,
+        regionId,
+        regionName,
+        userId: user.uid,
+        userName: userData?.displayName || user.email,
+        date: selectedDate,
+        hour: selectedHour,
+        data: updatedData,
+        ...(reportType === "daily" && {
+          totals: {
+            totalPopulation: updatedData.totals?.totalPopulation || 0,
+            totalWholesale: updatedData.totals?.totalWholesale || 0,
+            losses: updatedData.totals?.losses || 0,
+          },
+        }),
+      };
+
+      const result = await updateReport(existingReport.id, reportData);
+
+      if (result.success) {
+        // Логируем редактирование отчета
+        await log(ActionTypes.REPORT_EDITED, {
+          reportId: existingReport.id,
+          reportDate: selectedDate,
+          reportHour: selectedHour,
+          reportType: reportType,
+          regionName: regionName,
+          regionId: regionId,
+          oldData: oldData,
+          newData: updatedData,
+          changes: {
+            hasChanges: JSON.stringify(oldData) !== JSON.stringify(updatedData),
+          },
+        });
+
+        toast.success(
+          script === "latin"
+            ? "Hisobot muvaffaqiyatli tahrirlandi"
+            : "Ҳисобот муваффақиятли таҳрирланди",
+        );
+        await loadReports(selectedDate);
+        setIsEditModalOpen(false);
+        setEditingReport(null);
+
+        // Обновляем existingReport
+        const updated = await getReportByTime(
+          selectedDate,
+          selectedHour,
+          regionId,
+        );
+        if (updated.success && updated.report) {
+          setExistingReport(updated.report);
+          setFormData(updated.report.data || {});
+        }
+      } else {
+        toast.error(
+          result.error ||
+            (script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди"),
+        );
+      }
+    } catch (error) {
+      console.error("Error editing report:", error);
+      toast.error(
+        script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
+      );
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   // Получение типа отчета на узбекском
@@ -595,10 +759,10 @@ const DataEntry = () => {
                   <span className="text-sm text-gray-600 dark:text-gray-400">
                     {formatTime(selectedHour)}
                   </span>
-                  {existingReport && (
+                  {isReportSaved && (
                     <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                       <CheckCircle className="w-3 h-3" />
-                      {script === "latin" ? "Mavjud" : "Мавжуд"}
+                      {script === "latin" ? "Saqlangan" : "Сақланган"}
                     </span>
                   )}
                 </>
@@ -618,7 +782,14 @@ const DataEntry = () => {
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex flex-wrap justify-between items-center gap-2">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <FileText className="w-5 h-5 text-blue-500" />
-              {isEditing ? (
+              {isReportSaved ? (
+                <span className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                  <CheckCircle className="w-4 h-4" />
+                  {script === "latin"
+                    ? "Hisobot saqlangan"
+                    : "Ҳисобот сақланган"}
+                </span>
+              ) : isEditing ? (
                 <span className="flex items-center gap-2">
                   <Edit className="w-4 h-4 text-blue-500" />
                   {script === "latin"
@@ -696,6 +867,7 @@ const DataEntry = () => {
                     {filteredItems.map((item) => {
                       const fields = getFieldsForCategory(item.category);
                       const itemData = formData[item.category]?.[item.id] || {};
+                      const isDisabled = isReportSaved;
 
                       return (
                         <tr
@@ -717,16 +889,26 @@ const DataEntry = () => {
                               <input
                                 type="number"
                                 step="0.01"
-                                value={itemData.flow || ""}
+                                value={
+                                  itemData.flow !== undefined &&
+                                  itemData.flow !== null
+                                    ? itemData.flow
+                                    : ""
+                                }
                                 onChange={(e) =>
                                   handleInputChange(
                                     item.category,
                                     item.id,
                                     "flow",
-                                    parseFloat(e.target.value) || 0,
+                                    e.target.value,
                                   )
                                 }
-                                className="w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                disabled={isDisabled}
+                                className={`w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                  isDisabled
+                                    ? "opacity-50 cursor-not-allowed"
+                                    : ""
+                                }`}
                                 placeholder="0.00"
                               />
                             ) : (
@@ -738,16 +920,26 @@ const DataEntry = () => {
                               <input
                                 type="number"
                                 step="0.01"
-                                value={itemData.pressure || ""}
+                                value={
+                                  itemData.pressure !== undefined &&
+                                  itemData.pressure !== null
+                                    ? itemData.pressure
+                                    : ""
+                                }
                                 onChange={(e) =>
                                   handleInputChange(
                                     item.category,
                                     item.id,
                                     "pressure",
-                                    parseFloat(e.target.value) || 0,
+                                    e.target.value,
                                   )
                                 }
-                                className="w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                                disabled={isDisabled}
+                                className={`w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                  isDisabled
+                                    ? "opacity-50 cursor-not-allowed"
+                                    : ""
+                                }`}
                                 placeholder="0.00"
                               />
                             ) : (
@@ -778,17 +970,29 @@ const DataEntry = () => {
                       <input
                         type="number"
                         step="0.01"
-                        value={formData.totals?.totalPopulation || ""}
+                        value={
+                          formData.totals?.totalPopulation !== undefined &&
+                          formData.totals?.totalPopulation !== null
+                            ? formData.totals.totalPopulation
+                            : ""
+                        }
                         onChange={(e) => {
+                          const value =
+                            e.target.value === ""
+                              ? ""
+                              : parseFloat(e.target.value);
                           setFormData((prev) => ({
                             ...prev,
                             totals: {
                               ...prev.totals,
-                              totalPopulation: parseFloat(e.target.value) || 0,
+                              totalPopulation: isNaN(value) ? 0 : value,
                             },
                           }));
                         }}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                        disabled={isReportSaved}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                          isReportSaved ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
                         placeholder="0.00"
                       />
                     </div>
@@ -799,17 +1003,29 @@ const DataEntry = () => {
                       <input
                         type="number"
                         step="0.01"
-                        value={formData.totals?.totalWholesale || ""}
+                        value={
+                          formData.totals?.totalWholesale !== undefined &&
+                          formData.totals?.totalWholesale !== null
+                            ? formData.totals.totalWholesale
+                            : ""
+                        }
                         onChange={(e) => {
+                          const value =
+                            e.target.value === ""
+                              ? ""
+                              : parseFloat(e.target.value);
                           setFormData((prev) => ({
                             ...prev,
                             totals: {
                               ...prev.totals,
-                              totalWholesale: parseFloat(e.target.value) || 0,
+                              totalWholesale: isNaN(value) ? 0 : value,
                             },
                           }));
                         }}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                        disabled={isReportSaved}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                          isReportSaved ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
                         placeholder="0.00"
                       />
                     </div>
@@ -820,17 +1036,29 @@ const DataEntry = () => {
                       <input
                         type="number"
                         step="0.01"
-                        value={formData.totals?.losses || ""}
+                        value={
+                          formData.totals?.losses !== undefined &&
+                          formData.totals?.losses !== null
+                            ? formData.totals.losses
+                            : ""
+                        }
                         onChange={(e) => {
+                          const value =
+                            e.target.value === ""
+                              ? ""
+                              : parseFloat(e.target.value);
                           setFormData((prev) => ({
                             ...prev,
                             totals: {
                               ...prev.totals,
-                              losses: parseFloat(e.target.value) || 0,
+                              losses: isNaN(value) ? 0 : value,
                             },
                           }));
                         }}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                        disabled={isReportSaved}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                          isReportSaved ? "opacity-50 cursor-not-allowed" : ""
+                        }`}
                         placeholder="0.00"
                       />
                     </div>
@@ -844,33 +1072,45 @@ const DataEntry = () => {
                   onClick={() => {
                     setFormData({});
                     setSelectedHour(null);
+                    setIsReportSaved(false);
                   }}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
                 >
                   <X className="w-4 h-4" />
                   {translations.cancel}
                 </button>
-                <button
-                  onClick={handleSave}
-                  disabled={loading}
-                  className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                    loading
-                      ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                      : "bg-blue-600 hover:bg-blue-700 text-white"
-                  }`}
-                >
-                  {loading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      {translations.saving}
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      {isEditing ? translations.edit : translations.save}
-                    </>
-                  )}
-                </button>
+
+                {isReportSaved ? (
+                  <button
+                    onClick={handleEditClick}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <Edit className="w-4 h-4" />
+                    {translations.edit}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSave}
+                    disabled={loading || !hasAllFieldsFilled()}
+                    className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                      loading || !hasAllFieldsFilled()
+                        ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                        : "bg-green-600 hover:bg-green-700 text-white"
+                    }`}
+                  >
+                    {loading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        {translations.saving}
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        {isEditing ? translations.edit : translations.save}
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -891,6 +1131,20 @@ const DataEntry = () => {
               : "Илтимос, юқоридаги календардан сана ва вақтни танланг"}
           </p>
         </div>
+      )}
+
+      {/* Модальное окно редактирования */}
+      {isEditModalOpen && editingReport && (
+        <EditReportModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditingReport(null);
+          }}
+          reportData={editingReport}
+          onSave={handleEditSave}
+          loading={isSavingEdit}
+        />
       )}
     </div>
   );

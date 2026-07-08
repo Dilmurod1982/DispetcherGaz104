@@ -45,6 +45,9 @@ export const ActionTypes = {
   USER_DELETE: "user_delete",
   USER_LOGIN: "user_login",
   USER_LOGOUT: "user_logout",
+
+  REPORT_PERMISSION_GRANTED: "report_permission_granted",
+  REPORT_EDITED: "report_edited",
 };
 
 // Основная функция логирования

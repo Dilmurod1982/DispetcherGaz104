@@ -478,3 +478,55 @@ export const exportReportsToCSV = (reports) => {
   );
   return csv;
 };
+
+export const canEditReport = (reportDate, reportHour, userRole) => {
+  const now = new Date();
+  const reportDateTime = new Date(
+    `${reportDate}T${String(reportHour).padStart(2, "0")}:00:00`,
+  );
+
+  // Для районных диспетчеров
+  if (userRole === "ray_disp") {
+    // Для суточного отчета (00:00) - можно редактировать до 04:00 следующего дня
+    if (reportHour === 0) {
+      const nextDay = new Date(reportDateTime);
+      nextDay.setDate(nextDay.getDate() + 1);
+      nextDay.setHours(4, 0, 0, 0);
+      return now <= nextDay;
+    }
+
+    // Для остальных отчетов - можно редактировать до 00:00 следующего дня
+    const nextDay = new Date(reportDateTime);
+    nextDay.setDate(nextDay.getDate() + 1);
+    nextDay.setHours(0, 0, 0, 0);
+    return now <= nextDay;
+  }
+
+  // Для областных диспетчеров - можно редактировать всегда (с разрешения)
+  if (userRole === "vil_disp") {
+    return true;
+  }
+
+  return false;
+};
+
+// Получить время до которого можно редактировать
+export const getEditDeadline = (reportDate, reportHour) => {
+  const reportDateTime = new Date(
+    `${reportDate}T${String(reportHour).padStart(2, "0")}:00:00`,
+  );
+
+  if (reportHour === 0) {
+    // Суточный отчет - до 04:00 следующего дня
+    const deadline = new Date(reportDateTime);
+    deadline.setDate(deadline.getDate() + 1);
+    deadline.setHours(4, 0, 0, 0);
+    return deadline;
+  }
+
+  // Остальные отчеты - до 00:00 следующего дня
+  const deadline = new Date(reportDateTime);
+  deadline.setDate(deadline.getDate() + 1);
+  deadline.setHours(0, 0, 0, 0);
+  return deadline;
+};

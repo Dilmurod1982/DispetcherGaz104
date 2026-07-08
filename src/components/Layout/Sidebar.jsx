@@ -21,6 +21,7 @@ import {
 } from "react-icons/fi";
 import useLanguageStore from "../../store/languageStore";
 import useAuthStore from "../../store/authStore";
+import { FiEdit } from "react-icons/fi";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { script } = useLanguageStore();
@@ -67,6 +68,7 @@ const Sidebar = ({ isOpen, onClose }) => {
     usersRu: "Пользователи",
     logs: script === "latin" ? "Amallar jurnali" : "Амаллар журнали",
     logout: script === "latin" ? "Chiqish" : "Чиқиш",
+    editPermissions: script === "latin" ? "O'zgartirish" : "Ўзгартириш",
   };
 
   const handleLogout = async () => {
@@ -367,6 +369,20 @@ const Sidebar = ({ isOpen, onClose }) => {
                 >
                   <FiBarChart2 className="w-4 h-4" />
                   <span>{translations.viewReports}</span>
+                </NavLink>
+                <NavLink
+                  to="/reports/edit-permissions"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-sm ${
+                      isActive
+                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`
+                  }
+                >
+                  <FiEdit className="w-4 h-4" />
+                  <span>{translations.editPermissions}</span>
                 </NavLink>
               </div>
             )}

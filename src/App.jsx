@@ -27,6 +27,7 @@ import useLanguageStore from "./store/languageStore";
 import Consumers from "./pages/Consumers/Consumers";
 import DataEntry from "./pages/Reports/DataEntry/DataEntry";
 import ReportView from "./pages/Reports/ReportView/ReportView";
+import EditPermissions from "./pages/Reports/EditPermissions/EditPermissions";
 
 // Временные компоненты для пустых страниц
 const EmptyPage = ({ title }) => {
@@ -125,6 +126,10 @@ const App = () => {
 
           {/* Логи - только для dilik@mail.ru */}
           <Route path="/logs" element={<LogsRoute />} />
+          <Route
+            path="/reports/edit-permissions"
+            element={<EditPermissions />}
+          />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
