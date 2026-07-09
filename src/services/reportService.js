@@ -122,7 +122,7 @@ export const createMonth = async (monthKey) => {
   }
 };
 
-// Обновить метаданные месяца
+// Обновить метаданные месяца - ПОЛНОСТЬЮ ПЕРЕРАБОТАНА
 export const updateMonthMetadata = async (monthKey, data) => {
   try {
     const docRef = doc(db, METADATA_COLLECTION, monthKey);
@@ -138,29 +138,38 @@ export const updateMonthMetadata = async (monthKey, data) => {
       currentData = newDocSnap.exists() ? newDocSnap.data() : {};
     }
 
-    // Безопасно получаем регионы (всегда массив)
-    const regions = Array.isArray(currentData.regions)
-      ? currentData.regions
-      : [];
-
     // Подготавливаем данные для обновления
     const updateData = {};
 
-    // Обновляем reportCount если передан
+    // 1. Обновляем reportCount если передан
     if (data.reportCount !== undefined) {
-      updateData.reportCount = data.reportCount;
+      // Если reportCount - это объект increment, используем его
+      if (
+        typeof data.reportCount === "object" &&
+        data.reportCount.constructor === increment().constructor
+      ) {
+        updateData.reportCount = data.reportCount;
+      } else {
+        // Иначе просто устанавливаем значение
+        updateData.reportCount = data.reportCount;
+      }
     }
 
-    // Обновляем lastReportDate если передан
+    // 2. Обновляем lastReportDate если передан
     if (data.lastReportDate) {
       updateData.lastReportDate = data.lastReportDate;
     }
 
-    // Обновляем регионы, если передан новый регион
+    // 3. Обновляем регионы, если передан новый регион
     if (data.regionId) {
+      // Безопасно получаем текущий массив регионов
+      let regions = [];
+      if (currentData.regions && Array.isArray(currentData.regions)) {
+        regions = currentData.regions;
+      }
+
       // Проверяем, существует ли уже регион в списке
-      const regionExists = regions.some((r) => r === data.regionId);
-      if (!regionExists) {
+      if (!regions.includes(data.regionId)) {
         // Добавляем новый регион
         updateData.regions = [...regions, data.regionId];
       } else {
@@ -169,7 +178,7 @@ export const updateMonthMetadata = async (monthKey, data) => {
       }
     }
 
-    // Обновляем статус если передан
+    // 4. Обновляем статус если передан
     if (data.status) {
       updateData.status = data.status;
     }
@@ -177,12 +186,16 @@ export const updateMonthMetadata = async (monthKey, data) => {
     // Добавляем время обновления
     updateData.lastUpdated = serverTimestamp();
 
-    await updateDoc(docRef, updateData);
+    // Если есть данные для обновления - применяем
+    if (Object.keys(updateData).length > 0) {
+      await updateDoc(docRef, updateData);
+    }
 
     return true;
   } catch (error) {
     console.error("Error updating month metadata:", error);
-    throw error;
+    // Не выбрасываем ошибку, чтобы не прерывать создание отчета
+    return false;
   }
 };
 

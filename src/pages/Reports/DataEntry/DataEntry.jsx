@@ -47,10 +47,11 @@ const ConfirmModal = ({
   data,
   translations,
   loading,
+  assignedObjects,
 }) => {
   if (!isOpen) return null;
 
-  // Получаем все элементы для отображения
+  // Получаем все элементы для отображения с правильными названиями
   const getAllItems = () => {
     const items = [];
     const categories = [
@@ -65,11 +66,22 @@ const ConfirmModal = ({
       const categoryData = data[cat.key] || {};
       Object.keys(categoryData).forEach((id) => {
         const item = categoryData[id];
+        // Ищем объект в assignedObjects для получения правильного названия
+        const objectData = assignedObjects[cat.key]?.find(
+          (obj) => obj.id === id,
+        );
+        const displayName =
+          objectData?.displayName ||
+          objectData?.name ||
+          item.displayName ||
+          item.name ||
+          id;
+
         items.push({
           category: cat.key,
           categoryLabel: cat.label,
           id: id,
-          name: item.displayName || item.name || id,
+          name: displayName,
           flow: item.flow,
           pressureIn: item.pressureIn,
           pressureOut: item.pressureOut,
@@ -178,7 +190,7 @@ const ConfirmModal = ({
                     #{index + 1}
                   </span>
                 </div>
-                <div className="text-sm font-medium text-gray-900 dark:text-white mb-2 truncate">
+                <div className="text-sm font-medium text-gray-900 dark:text-white mb-2">
                   {item.name}
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
@@ -455,7 +467,6 @@ const DataEntry = () => {
         grp: [],
       };
 
-      // Загрузка ГРС
       const grsQuery = query(
         collection(db, "grs"),
         where("locationId", "in", assignedCities),
@@ -471,7 +482,6 @@ const DataEntry = () => {
         });
       });
 
-      // Загрузка узлов (nodes)
       const nodesQuery = query(
         collection(db, "nodes"),
         where("cityId", "in", assignedCities),
@@ -487,7 +497,6 @@ const DataEntry = () => {
         });
       });
 
-      // Загрузка межрайонных счетчиков
       const interQuery = query(
         collection(db, "interdistrict"),
         where("supplierId", "in", assignedCities),
@@ -503,7 +512,6 @@ const DataEntry = () => {
         });
       });
 
-      // Загрузка потребителей
       const consumersQuery = query(
         collection(db, "consumers"),
         where("locationId", "in", assignedCities),
@@ -519,7 +527,6 @@ const DataEntry = () => {
         });
       });
 
-      // Загрузка ГРП
       const grpQuery = query(
         collection(db, "grp"),
         where("locationId", "in", assignedCities),
@@ -548,7 +555,6 @@ const DataEntry = () => {
     }
   };
 
-  // Загрузка данных пользователя
   useEffect(() => {
     if (user?.uid) {
       loadUserAssignedItems(user.uid);
@@ -556,14 +562,12 @@ const DataEntry = () => {
     }
   }, [user]);
 
-  // Загрузка отчетов при изменении даты
   useEffect(() => {
     if (selectedDate) {
       loadReports(selectedDate);
     }
   }, [selectedDate]);
 
-  // Определение часов для отчетов
   useEffect(() => {
     const hours = [];
     for (let h = 0; h <= 22; h += 2) {
@@ -572,14 +576,12 @@ const DataEntry = () => {
     setReportHours(hours);
   }, []);
 
-  // Проверка существования отчета при выборе времени
   useEffect(() => {
     if (selectedHour !== null && selectedDate) {
       checkExistingReport();
     }
   }, [selectedHour, selectedDate]);
 
-  // Проверка доступности отчетов при изменении даты или времени
   useEffect(() => {
     const availability = {};
     reportHours.forEach((hour) => {
@@ -1066,37 +1068,37 @@ const DataEntry = () => {
     selectedDate === getToday() && canCreateReportForToday(selectedDate);
 
   return (
-    <div className="p-1 sm:p-4 max-w-full mx-auto">
+    <div className="p-2 sm:p-4 max-w-full mx-auto">
       {/* Заголовок */}
-      <div className="mb-2 sm:mb-6">
-        <h1 className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white">
+      <div className="mb-3 sm:mb-6">
+        <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
           {translations.title}
         </h1>
-        <p className="text-[10px] sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
           {translations.subtitle}
         </p>
       </div>
 
-      {/* Выбор даты и времени */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-4 mb-2 sm:mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+      {/* Выбор даты и времени - увеличенные элементы */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:p-4 mb-3 sm:mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div>
-            <label className="block text-[10px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5 sm:mb-1">
+            <label className="block text-sm sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {translations.selectDate}
             </label>
             <input
               type="date"
               value={selectedDate}
               onChange={handleDateChange}
-              className="w-full px-1.5 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+              className="w-full px-3 sm:px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-[10px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5 sm:mb-1">
+            <label className="block text-sm sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {translations.selectTime}
             </label>
-            <div className="grid grid-cols-4 gap-0.5 sm:gap-1">
+            <div className="grid grid-cols-4 gap-1 sm:gap-1">
               {reportHours.map((hour) => {
                 const isActive = selectedHour === hour;
                 const hasReport = reports.some((r) => r.hour === hour);
@@ -1209,26 +1211,26 @@ const DataEntry = () => {
                       handleHourSelect(hour);
                     }}
                     disabled={!isSelectable}
-                    className={`p-0.5 sm:p-1 text-[8px] sm:text-xs rounded-lg transition-all duration-200 relative border ${borderColor} ${bgColor} ${textColor} ${cursorClass} ${opacity}`}
+                    className={`p-2 sm:p-1 text-sm sm:text-xs rounded-lg transition-all duration-200 relative border ${borderColor} ${bgColor} ${textColor} ${cursorClass} ${opacity} min-h-[36px] sm:min-h-[28px]`}
                     title={reason || ""}
                   >
                     <span>{formatTime(hour)}</span>
 
                     {indicator === "edit" && (
-                      <span className="absolute -top-0.5 -right-0.5 w-1 h-1 sm:w-2 sm:h-2 bg-green-500 rounded-full"></span>
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full"></span>
                     )}
                     {indicator === "view" && (
-                      <span className="absolute -top-0.5 -right-0.5 w-1 h-1 sm:w-2 sm:h-2 bg-gray-400 rounded-full"></span>
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full"></span>
                     )}
                     {indicator === "create" && (
-                      <span className="absolute -top-0.5 -right-0.5 w-1 h-1 sm:w-2 sm:h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-yellow-500 rounded-full animate-pulse"></span>
                     )}
                     {isActive && (
-                      <span className="absolute -top-0.5 -right-0.5 w-1 h-1 sm:w-2 sm:h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                      <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-500 rounded-full animate-pulse"></span>
                     )}
 
                     {isViewOnly && (
-                      <span className="absolute -bottom-2 sm:-bottom-3 left-1/2 transform -translate-x-1/2 text-[4px] sm:text-[6px] text-gray-400 whitespace-nowrap">
+                      <span className="absolute -bottom-2 sm:-bottom-3 left-1/2 transform -translate-x-1/2 text-[6px] sm:text-[6px] text-gray-400 whitespace-nowrap">
                         {translations.viewOnly}
                       </span>
                     )}
@@ -1236,33 +1238,33 @@ const DataEntry = () => {
                 );
               })}
             </div>
-            <div className="mt-1 sm:mt-2 flex flex-wrap items-center gap-1 sm:gap-3 text-[8px] sm:text-xs">
+            <div className="mt-1.5 sm:mt-2 flex flex-wrap items-center gap-1.5 sm:gap-3 text-xs sm:text-xs">
               <div className="flex items-center gap-0.5 sm:gap-1">
-                <div className="w-1.5 h-1.5 sm:w-3 sm:h-3 bg-green-500 rounded-full"></div>
+                <div className="w-2 h-2 sm:w-3 sm:h-3 bg-green-500 rounded-full"></div>
                 <span className="text-gray-500 dark:text-gray-400">
                   {script === "latin" ? "Tahrirlash" : "Таҳрирлаш"}
                 </span>
               </div>
               <div className="flex items-center gap-0.5 sm:gap-1">
-                <div className="w-1.5 h-1.5 sm:w-3 sm:h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 sm:w-3 sm:h-3 bg-yellow-500 rounded-full animate-pulse"></div>
                 <span className="text-gray-500 dark:text-gray-400">
                   {script === "latin" ? "Yozish" : "Ёзиш"}
                 </span>
               </div>
               <div className="flex items-center gap-0.5 sm:gap-1">
-                <div className="w-1.5 h-1.5 sm:w-3 sm:h-3 bg-gray-400 rounded-full"></div>
+                <div className="w-2 h-2 sm:w-3 sm:h-3 bg-gray-400 rounded-full"></div>
                 <span className="text-gray-500 dark:text-gray-400">
                   {script === "latin" ? "Ko'rish" : "Кўриш"}
                 </span>
               </div>
               <div className="flex items-center gap-0.5 sm:gap-1">
-                <div className="w-1.5 h-1.5 sm:w-3 sm:h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                <div className="w-2 h-2 sm:w-3 sm:h-3 bg-blue-500 rounded-full animate-pulse"></div>
                 <span className="text-gray-500 dark:text-gray-400">
                   {script === "latin" ? "Tanlangan" : "Танланган"}
                 </span>
               </div>
             </div>
-            <div className="mt-0.5 sm:mt-1 text-[8px] sm:text-xs text-gray-400 dark:text-gray-500">
+            <div className="mt-1 sm:mt-1 text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">
               {script === "latin"
                 ? "* Hisobot vaqtdan 10 daqiqa oldin ochiladi"
                 : "* Ҳисобот вақтдан 10 дақиқа олдин очилади"}
@@ -1281,14 +1283,14 @@ const DataEntry = () => {
           </div>
 
           <div>
-            <label className="block text-[10px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5 sm:mb-1">
+            <label className="block text-sm sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               {translations.reportType}
             </label>
-            <div className="flex items-center gap-1 sm:gap-2 p-1 sm:p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+            <div className="flex items-center gap-1 sm:gap-2 p-2 sm:p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50">
               {selectedHour !== null ? (
                 <>
                   <span
-                    className={`px-1 sm:px-2 py-0.5 sm:py-1 text-[8px] sm:text-xs rounded-full ${
+                    className={`px-2 sm:px-2 py-1 sm:py-1 text-xs sm:text-xs rounded-full ${
                       getReportTypeByHour(selectedHour) === "daily"
                         ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
                         : getReportTypeByHour(selectedHour) === "six_hour"
@@ -1298,20 +1300,20 @@ const DataEntry = () => {
                   >
                     {getReportTypeLabel(selectedHour)}
                   </span>
-                  <span className="text-[10px] sm:text-sm text-gray-600 dark:text-gray-400">
+                  <span className="text-sm sm:text-sm text-gray-600 dark:text-gray-400">
                     {formatTime(selectedHour)}
                   </span>
                   {isReportSaved && (
-                    <span className="text-[8px] sm:text-xs text-green-600 dark:text-green-400 flex items-center gap-0.5 sm:gap-1">
-                      <CheckCircle className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                    <span className="text-xs sm:text-xs text-green-600 dark:text-green-400 flex items-center gap-0.5 sm:gap-1">
+                      <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       <span className="hidden xs:inline">
                         {script === "latin" ? "Saqlangan" : "Сақланган"}
                       </span>
                     </span>
                   )}
                   {isReportSaved && !canEditCurrentReport() && (
-                    <span className="text-[8px] sm:text-xs text-gray-400 flex items-center gap-0.5 sm:gap-1">
-                      <Eye className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                    <span className="text-xs sm:text-xs text-gray-400 flex items-center gap-0.5 sm:gap-1">
+                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       <span className="hidden xs:inline">
                         {script === "latin" ? "Faqat ko'rish" : "Фақат кўриш"}
                       </span>
@@ -1319,7 +1321,7 @@ const DataEntry = () => {
                   )}
                 </>
               ) : (
-                <span className="text-[10px] sm:text-sm text-gray-400">
+                <span className="text-sm sm:text-sm text-gray-400">
                   {script === "latin" ? "Vaqt tanlanmagan" : "Вақт танланмаган"}
                 </span>
               )}
@@ -1328,17 +1330,17 @@ const DataEntry = () => {
         </div>
       </div>
 
-      {/* Форма ввода данных - адаптивный табличный вид */}
+      {/* Форма ввода данных - как в модальном окне подтверждения */}
       {selectedHour !== null && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="p-1.5 sm:p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+          <div className="p-2 sm:p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
             <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
-              <h2 className="text-xs sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-1 sm:gap-2">
-                <FileText className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-blue-500" />
+              <h2 className="text-sm sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-1 sm:gap-2">
+                <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" />
                 {isReportSaved ? (
                   <span className="flex items-center gap-1 sm:gap-2 text-green-600 dark:text-green-400">
-                    <CheckCircle className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
-                    <span className="text-[10px] sm:text-base">
+                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <span className="text-xs sm:text-base">
                       {script === "latin"
                         ? "Hisobot saqlangan"
                         : "Ҳисобот сақланган"}
@@ -1346,21 +1348,21 @@ const DataEntry = () => {
                   </span>
                 ) : isEditing ? (
                   <span className="flex items-center gap-1 sm:gap-2">
-                    <Edit className="w-2.5 h-2.5 sm:w-4 sm:h-4 text-blue-500" />
-                    <span className="text-[10px] sm:text-base">
+                    <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" />
+                    <span className="text-xs sm:text-base">
                       {script === "latin"
                         ? "Hisobotni tahrirlash"
                         : "Ҳисоботни таҳрирлаш"}
                     </span>
                   </span>
                 ) : (
-                  <span className="text-[10px] sm:text-base">
+                  <span className="text-xs sm:text-base">
                     {translations.enterData}
                   </span>
                 )}
                 {isReportSaved && !canEditCurrentReport() && (
-                  <span className="text-[8px] sm:text-xs text-gray-400 flex items-center gap-0.5 sm:gap-1">
-                    <Eye className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                  <span className="text-[10px] sm:text-xs text-gray-400 flex items-center gap-0.5 sm:gap-1">
+                    <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     <span className="hidden xs:inline">
                       {script === "latin" ? "(faqat ko'rish)" : "(фақат кўриш)"}
                     </span>
@@ -1368,29 +1370,29 @@ const DataEntry = () => {
                 )}
               </h2>
               <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-                <div className="relative w-24 sm:w-48">
+                <div className="relative w-28 sm:w-48">
                   <Search
-                    className="absolute left-1.5 sm:left-2 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    size={10}
+                    className="absolute left-2 sm:left-2 top-1/2 transform -translate-y-1/2 text-gray-400"
+                    size={14}
                   />
                   <input
                     type="text"
                     placeholder={translations.search}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-5 sm:pl-6 pr-1.5 sm:pr-2 py-0.5 sm:py-1 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                    className="w-full pl-7 sm:pl-6 pr-2 sm:pr-2 py-1.5 sm:py-1 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   />
                 </div>
-                <div className="flex items-center gap-0.5 sm:gap-2 text-[8px] sm:text-sm text-gray-500 dark:text-gray-400">
-                  <Calendar className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                <div className="flex items-center gap-0.5 sm:gap-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                  <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="hidden xs:inline">
                     {formatDateDisplay(selectedDate)}
                   </span>
-                  <span className="xs:hidden text-[8px]">
+                  <span className="xs:hidden text-xs">
                     {selectedDate.slice(5)}
                   </span>
                   <span className="mx-0.5 sm:mx-1">|</span>
-                  <Clock className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                  <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span>{formatTime(selectedHour)}</span>
                 </div>
               </div>
@@ -1398,19 +1400,19 @@ const DataEntry = () => {
           </div>
 
           {loadingObjects ? (
-            <div className="flex items-center justify-center py-4 sm:py-12">
-              <Loader2 className="w-5 h-5 sm:w-8 sm:h-8 animate-spin text-blue-500" />
-              <span className="ml-1.5 sm:ml-3 text-xs sm:text-base text-gray-600 dark:text-gray-400">
+            <div className="flex items-center justify-center py-6 sm:py-12">
+              <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-blue-500" />
+              <span className="ml-2 sm:ml-3 text-sm sm:text-base text-gray-600 dark:text-gray-400">
                 {translations.loadingObjects}
               </span>
             </div>
           ) : !hasObjects ? (
-            <div className="text-center py-4 sm:py-12">
-              <AlertCircle className="w-8 h-8 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-1 sm:mb-3" />
-              <h3 className="text-sm sm:text-lg font-medium text-gray-700 dark:text-gray-300">
+            <div className="text-center py-6 sm:py-12">
+              <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-2 sm:mb-3" />
+              <h3 className="text-base sm:text-lg font-medium text-gray-700 dark:text-gray-300">
                 {translations.noAssignedItems}
               </h3>
-              <p className="text-[10px] sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {script === "latin"
                   ? "Sizga biriktirilgan obyektlar mavjud emas"
                   : "Сизга бириктирилган объектлар мавжуд эмас"}
@@ -1418,23 +1420,24 @@ const DataEntry = () => {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[400px] sm:min-w-full">
+              {/* Десктопная таблица */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         {translations.category}
                       </th>
-                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[60px] sm:min-w-[120px]">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
                         {translations.object}
                       </th>
-                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[50px] sm:min-w-[100px]">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[100px]">
                         {translations.flow}
                       </th>
-                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[50px] sm:min-w-[100px]">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[100px]">
                         {translations.pressureIn}
                       </th>
-                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[50px] sm:min-w-[100px]">
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[100px]">
                         {translations.pressureOut}
                       </th>
                     </tr>
@@ -1451,17 +1454,17 @@ const DataEntry = () => {
                           key={`${item.category}_${item.id}`}
                           className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                         >
-                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
-                            <span className="text-[8px] sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <td className="px-3 py-2">
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                               {item.categoryLabel}
                             </span>
                           </td>
-                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
-                            <span className="text-[8px] sm:text-sm text-gray-900 dark:text-white truncate max-w-[60px] sm:max-w-none inline-block">
+                          <td className="px-3 py-2">
+                            <span className="text-sm text-gray-900 dark:text-white">
                               {item.displayName || item.name || item.id}
                             </span>
                           </td>
-                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
+                          <td className="px-3 py-2">
                             {fields.includes("flow") ? (
                               <input
                                 type="number"
@@ -1481,7 +1484,7 @@ const DataEntry = () => {
                                   )
                                 }
                                 disabled={isDisabled}
-                                className={`w-12 sm:w-24 px-0.5 sm:px-2 py-0.5 sm:py-1.5 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                                   isDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
@@ -1489,12 +1492,10 @@ const DataEntry = () => {
                                 placeholder="0"
                               />
                             ) : (
-                              <span className="text-[8px] sm:text-sm text-gray-400">
-                                —
-                              </span>
+                              <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
+                          <td className="px-3 py-2">
                             {fields.includes("pressureIn") ? (
                               <input
                                 type="number"
@@ -1514,7 +1515,7 @@ const DataEntry = () => {
                                   )
                                 }
                                 disabled={isDisabled}
-                                className={`w-12 sm:w-24 px-0.5 sm:px-2 py-0.5 sm:py-1.5 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                                   isDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
@@ -1522,12 +1523,10 @@ const DataEntry = () => {
                                 placeholder="0"
                               />
                             ) : (
-                              <span className="text-[8px] sm:text-sm text-gray-400">
-                                —
-                              </span>
+                              <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
+                          <td className="px-3 py-2">
                             {fields.includes("pressureOut") ? (
                               <input
                                 type="number"
@@ -1547,7 +1546,7 @@ const DataEntry = () => {
                                   )
                                 }
                                 disabled={isDisabled}
-                                className={`w-12 sm:w-24 px-0.5 sm:px-2 py-0.5 sm:py-1.5 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                                   isDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
@@ -1555,9 +1554,7 @@ const DataEntry = () => {
                                 placeholder="0"
                               />
                             ) : (
-                              <span className="text-[8px] sm:text-sm text-gray-400">
-                                —
-                              </span>
+                              <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
                         </tr>
@@ -1567,18 +1564,150 @@ const DataEntry = () => {
                 </table>
               </div>
 
+              {/* Мобильные карточки - как в модальном окне подтверждения */}
+              <div className="sm:hidden space-y-3 p-2">
+                {filteredItems.map((item, index) => {
+                  const fields = getFieldsForCategory(item.category);
+                  const itemData = formData[item.category]?.[item.id] || {};
+                  const isDisabled = isReportSaved && !canEditCurrentReport();
+
+                  return (
+                    <div
+                      key={`${item.category}_${item.id}`}
+                      className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-3 border border-gray-200 dark:border-gray-700"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                          {item.categoryLabel}
+                        </span>
+                        <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full">
+                          #{index + 1}
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                        {item.displayName || item.name || item.id}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-600">
+                          <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+                            {translations.flow}
+                          </div>
+                          {fields.includes("flow") ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={
+                                itemData.flow !== undefined &&
+                                itemData.flow !== null
+                                  ? itemData.flow
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                handleInputChange(
+                                  item.category,
+                                  item.id,
+                                  "flow",
+                                  e.target.value,
+                                )
+                              }
+                              disabled={isDisabled}
+                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                isDisabled
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : ""
+                              }`}
+                              placeholder="0"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-600">
+                          <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+                            {translations.pressureIn}
+                          </div>
+                          {fields.includes("pressureIn") ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={
+                                itemData.pressureIn !== undefined &&
+                                itemData.pressureIn !== null
+                                  ? itemData.pressureIn
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                handleInputChange(
+                                  item.category,
+                                  item.id,
+                                  "pressureIn",
+                                  e.target.value,
+                                )
+                              }
+                              disabled={isDisabled}
+                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                isDisabled
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : ""
+                              }`}
+                              placeholder="0"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-600">
+                          <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+                            {translations.pressureOut}
+                          </div>
+                          {fields.includes("pressureOut") ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={
+                                itemData.pressureOut !== undefined &&
+                                itemData.pressureOut !== null
+                                  ? itemData.pressureOut
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                handleInputChange(
+                                  item.category,
+                                  item.id,
+                                  "pressureOut",
+                                  e.target.value,
+                                )
+                              }
+                              disabled={isDisabled}
+                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                isDisabled
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : ""
+                              }`}
+                              placeholder="0"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
               {/* Суточный отчет - дополнительные поля */}
               {isDailyReport && (
-                <div className="p-1.5 sm:p-4 border-t border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
-                  <h3 className="text-[10px] sm:text-sm font-medium text-purple-800 dark:text-purple-300 mb-1 sm:mb-3 flex items-center gap-1 sm:gap-2">
-                    <span className="w-0.5 h-2 sm:h-4 bg-purple-500 rounded-full"></span>
+                <div className="p-3 sm:p-4 border-t border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
+                  <h3 className="text-sm sm:text-sm font-medium text-purple-800 dark:text-purple-300 mb-2 sm:mb-3 flex items-center gap-1 sm:gap-2">
+                    <span className="w-1 h-3 sm:h-4 bg-purple-500 rounded-full"></span>
                     {script === "latin"
                       ? "Kunlik qo'shimcha ma'lumotlar"
                       : "Кунлик қўшимча маълумотлар"}
                   </h3>
-                  <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-3">
+                  <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                     <div>
-                      <label className="block text-[8px] sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
+                      <label className="block text-xs sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
                         {translations.totalPopulation}
                       </label>
                       <input
@@ -1604,7 +1733,7 @@ const DataEntry = () => {
                           }));
                         }}
                         disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-1 sm:px-3 py-0.5 sm:py-2 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                           isReportSaved && !canEditCurrentReport()
                             ? "opacity-50 cursor-not-allowed"
                             : ""
@@ -1613,7 +1742,7 @@ const DataEntry = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-[8px] sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
+                      <label className="block text-xs sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
                         {translations.totalWholesale}
                       </label>
                       <input
@@ -1639,7 +1768,7 @@ const DataEntry = () => {
                           }));
                         }}
                         disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-1 sm:px-3 py-0.5 sm:py-2 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                           isReportSaved && !canEditCurrentReport()
                             ? "opacity-50 cursor-not-allowed"
                             : ""
@@ -1648,7 +1777,7 @@ const DataEntry = () => {
                       />
                     </div>
                     <div className="xs:col-span-2 sm:col-span-1">
-                      <label className="block text-[8px] sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
+                      <label className="block text-xs sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
                         {translations.losses}
                       </label>
                       <input
@@ -1674,7 +1803,7 @@ const DataEntry = () => {
                           }));
                         }}
                         disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-1 sm:px-3 py-0.5 sm:py-2 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                           isReportSaved && !canEditCurrentReport()
                             ? "opacity-50 cursor-not-allowed"
                             : ""
@@ -1687,16 +1816,16 @@ const DataEntry = () => {
               )}
 
               {/* Кнопки */}
-              <div className="px-1.5 py-1.5 sm:px-4 sm:py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex flex-wrap gap-1 sm:gap-3 justify-end">
+              <div className="px-3 py-2 sm:px-4 sm:py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex flex-wrap gap-2 sm:gap-3 justify-end">
                 <button
                   onClick={() => {
                     setFormData({});
                     setSelectedHour(null);
                     setIsReportSaved(false);
                   }}
-                  className="px-2 py-1 sm:px-4 sm:py-2 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-0.5 sm:gap-2"
+                  className="px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-1 sm:gap-2"
                 >
-                  <X className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                  <X className="w-4 h-4 sm:w-4 sm:h-4" />
                   <span className="hidden xs:inline">
                     {translations.cancel}
                   </span>
@@ -1706,13 +1835,13 @@ const DataEntry = () => {
                   <button
                     onClick={handleEditClick}
                     disabled={!canEdit}
-                    className={`px-2 py-1 sm:px-4 sm:py-2 text-[8px] sm:text-sm rounded-lg transition-colors flex items-center gap-0.5 sm:gap-2 ${
+                    className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-sm rounded-lg transition-colors flex items-center gap-1 sm:gap-2 ${
                       canEdit
                         ? "bg-blue-600 hover:bg-blue-700 text-white"
                         : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                     }`}
                   >
-                    <Edit className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                    <Edit className="w-4 h-4 sm:w-4 sm:h-4" />
                     <span className="hidden xs:inline">
                       {translations.edit}
                     </span>
@@ -1721,13 +1850,13 @@ const DataEntry = () => {
                   <button
                     onClick={openConfirmModal}
                     disabled={loading || !hasAllFieldsFilled()}
-                    className={`px-2 py-1 sm:px-4 sm:py-2 text-[8px] sm:text-sm rounded-lg transition-colors flex items-center gap-0.5 sm:gap-2 ${
+                    className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-sm rounded-lg transition-colors flex items-center gap-1 sm:gap-2 ${
                       loading || !hasAllFieldsFilled()
                         ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                         : "bg-green-600 hover:bg-green-700 text-white"
                     }`}
                   >
-                    <Save className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                    <Save className="w-4 h-4 sm:w-4 sm:h-4" />
                     <span className="hidden xs:inline">
                       {isEditing ? translations.edit : translations.save}
                     </span>
@@ -1740,14 +1869,14 @@ const DataEntry = () => {
       )}
 
       {selectedHour === null && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-8 text-center">
-          <Clock className="w-8 h-8 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-1 sm:mb-3" />
-          <h3 className="text-sm sm:text-lg font-medium text-gray-700 dark:text-gray-300">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 sm:p-8 text-center">
+          <Clock className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-2 sm:mb-3" />
+          <h3 className="text-base sm:text-lg font-medium text-gray-700 dark:text-gray-300">
             {script === "latin"
               ? "Hisobot vaqtini tanlang"
               : "Ҳисобот вақтини танланг"}
           </h3>
-          <p className="text-[10px] sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
             {script === "latin"
               ? "Iltimos, yuqoridagi kalendardan sana va vaqtni tanlang"
               : "Илтимос, юқоридаги календардан сана ва вақтни танланг"}
@@ -1763,6 +1892,7 @@ const DataEntry = () => {
         data={formData}
         translations={translations}
         loading={isSaving}
+        assignedObjects={assignedObjects}
       />
 
       {/* Модальное окно редактирования */}
