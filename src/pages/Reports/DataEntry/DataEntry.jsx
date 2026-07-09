@@ -14,6 +14,7 @@ import {
   Trash2,
   Loader2,
   Search,
+  ArrowRight,
 } from "lucide-react";
 import useLanguageStore from "../../../store/languageStore";
 import useAuthStore from "../../../store/authStore";
@@ -37,6 +38,270 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../../firebase/config";
 import { toast } from "react-toastify";
 import EditReportModal from "../../../components/Reports/EditReportModal.jsx";
+
+// Компонент модального окна подтверждения
+const ConfirmModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  data,
+  translations,
+  loading,
+}) => {
+  if (!isOpen) return null;
+
+  // Получаем все элементы для отображения
+  const getAllItems = () => {
+    const items = [];
+    const categories = [
+      { key: "grs", label: translations.grs },
+      { key: "nodes", label: translations.nodes },
+      { key: "interdistrict", label: translations.interdistrict },
+      { key: "consumers", label: translations.consumers },
+      { key: "grp", label: translations.grp },
+    ];
+
+    categories.forEach((cat) => {
+      const categoryData = data[cat.key] || {};
+      Object.keys(categoryData).forEach((id) => {
+        const item = categoryData[id];
+        items.push({
+          category: cat.key,
+          categoryLabel: cat.label,
+          id: id,
+          name: item.displayName || item.name || id,
+          flow: item.flow,
+          pressureIn: item.pressureIn,
+          pressureOut: item.pressureOut,
+        });
+      });
+    });
+
+    return items;
+  };
+
+  const items = getAllItems();
+  const hasTotals =
+    data.totals &&
+    (data.totals.totalPopulation ||
+      data.totals.totalWholesale ||
+      data.totals.losses);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 sm:p-4 z-[100]">
+      <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
+        {/* Заголовок */}
+        <div className="flex items-center justify-between px-3 sm:px-6 py-2 sm:py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+          <h2 className="text-sm sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
+            {translations.confirmTitle || "Hisobotni tasdiqlang"}
+          </h2>
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 dark:text-gray-400" />
+          </button>
+        </div>
+
+        {/* Содержимое */}
+        <div className="p-2 sm:p-6 overflow-y-auto max-h-[calc(95vh-140px)]">
+          {/* Десктопная таблица */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {translations.category}
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {translations.object}
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {translations.flow}
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {translations.pressureIn}
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {translations.pressureOut}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {items.map((item, index) => (
+                  <tr
+                    key={`${item.category}_${item.id}_${index}`}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <td className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
+                      {item.categoryLabel}
+                    </td>
+                    <td className="px-3 py-2 text-sm text-gray-900 dark:text-white">
+                      {item.name}
+                    </td>
+                    <td className="px-3 py-2 text-sm font-medium text-blue-600 dark:text-blue-400">
+                      {item.flow !== undefined && item.flow !== null
+                        ? Number(item.flow).toFixed(2)
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-sm font-medium text-green-600 dark:text-green-400">
+                      {item.pressureIn !== undefined && item.pressureIn !== null
+                        ? Number(item.pressureIn).toFixed(2)
+                        : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-sm font-medium text-purple-600 dark:text-purple-400">
+                      {item.pressureOut !== undefined &&
+                      item.pressureOut !== null
+                        ? Number(item.pressureOut).toFixed(2)
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Мобильные карточки */}
+          <div className="sm:hidden space-y-3">
+            {items.map((item, index) => (
+              <div
+                key={`${item.category}_${item.id}_${index}`}
+                className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-3 border border-gray-200 dark:border-gray-700"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                    {item.categoryLabel}
+                  </span>
+                  <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full">
+                    #{index + 1}
+                  </span>
+                </div>
+                <div className="text-sm font-medium text-gray-900 dark:text-white mb-2 truncate">
+                  {item.name}
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-600">
+                    <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+                      {translations.flow}
+                    </div>
+                    <div className="font-semibold text-blue-600 dark:text-blue-400">
+                      {item.flow !== undefined && item.flow !== null
+                        ? Number(item.flow).toFixed(2)
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-600">
+                    <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+                      {translations.pressureIn}
+                    </div>
+                    <div className="font-semibold text-green-600 dark:text-green-400">
+                      {item.pressureIn !== undefined && item.pressureIn !== null
+                        ? Number(item.pressureIn).toFixed(2)
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-600">
+                    <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+                      {translations.pressureOut}
+                    </div>
+                    <div className="font-semibold text-purple-600 dark:text-purple-400">
+                      {item.pressureOut !== undefined &&
+                      item.pressureOut !== null
+                        ? Number(item.pressureOut).toFixed(2)
+                        : "—"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Суточные итоги */}
+          {hasTotals && (
+            <div className="mt-4 p-3 sm:p-4 border border-purple-200 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/20">
+              <h4 className="text-xs sm:text-sm font-medium text-purple-800 dark:text-purple-300 mb-2">
+                {translations.dailyTotals || "Кунлик жами"}
+              </h4>
+              <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-700">
+                  <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                    {translations.totalPopulation}
+                  </div>
+                  <div className="text-sm sm:text-base font-bold text-blue-600 dark:text-blue-400">
+                    {data.totals?.totalPopulation
+                      ? Number(data.totals.totalPopulation).toFixed(2)
+                      : "0"}
+                  </div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-700">
+                  <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                    {translations.totalWholesale}
+                  </div>
+                  <div className="text-sm sm:text-base font-bold text-green-600 dark:text-green-400">
+                    {data.totals?.totalWholesale
+                      ? Number(data.totals.totalWholesale).toFixed(2)
+                      : "0"}
+                  </div>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded p-2 text-center border border-gray-200 dark:border-gray-700">
+                  <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                    {translations.losses}
+                  </div>
+                  <div className="text-sm sm:text-base font-bold text-red-600 dark:text-red-400">
+                    {data.totals?.losses
+                      ? Number(data.totals.losses).toFixed(2)
+                      : "0"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {items.length === 0 && !hasTotals && (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              {translations.noDataAvailable || "Ma'lumot mavjud emas"}
+            </div>
+          )}
+        </div>
+
+        {/* Кнопки */}
+        <div className="flex flex-wrap gap-2 sm:gap-3 justify-end px-3 sm:px-6 py-2 sm:py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-1 sm:gap-2"
+          >
+            <X className="w-3 h-3 sm:w-4 sm:h-4" />
+            {translations.cancel}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className={`px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm rounded-lg transition-colors flex items-center gap-1 sm:gap-2 ${
+              loading
+                ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                : "bg-green-600 hover:bg-green-700 text-white"
+            }`}
+          >
+            {loading ? (
+              <>
+                <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                {translations.saving}
+              </>
+            ) : (
+              <>
+                <Save className="w-3 h-3 sm:w-4 sm:h-4" />
+                {translations.save}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const DataEntry = () => {
   const { script } = useLanguageStore();
@@ -75,6 +340,8 @@ const DataEntry = () => {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isReportSaved, setIsReportSaved] = useState(false);
   const [reportAvailability, setReportAvailability] = useState({});
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const translations = {
     title:
@@ -162,6 +429,11 @@ const DataEntry = () => {
       script === "latin"
         ? "Hisobot yozish vaqti 06:00 dan 06:00 gacha"
         : "Ҳисобот ёзиш вақти 06:00 дан 06:00 гача",
+    category: script === "latin" ? "Turi" : "Тури",
+    noDataAvailable: script === "latin" ? "Ma'lumot yo'q" : "Маълумот йўқ",
+    confirmTitle:
+      script === "latin" ? "Hisobotni tasdiqlang" : "Ҳисоботни тасдиқланг",
+    dailyTotals: script === "latin" ? "Kunlik jami" : "Кунлик жами",
   };
 
   // Загрузка прикрепленных объектов
@@ -353,9 +625,7 @@ const DataEntry = () => {
       userData?.role,
     );
 
-    // Для сегодняшнего дня
     if (isToday) {
-      // Если есть отчет - проверяем можно ли редактировать
       if (existingReport) {
         const canEdit = canEditReport(selectedDate, hour, userData?.role);
         if (canEdit) {
@@ -374,9 +644,7 @@ const DataEntry = () => {
         }
       }
 
-      // Если нет отчета - проверяем можно ли создать
       if (!canCreateSpecific) {
-        // Проверяем, в периоде ли создания (06:00-06:00)
         const canCreateToday = canCreateReportForToday(selectedDate);
         if (!canCreateToday) {
           toast.warning(
@@ -385,7 +653,6 @@ const DataEntry = () => {
               : "Ҳисобот ёзиш вақти тугаган (06:00 дан 06:00 гача)",
           );
         } else {
-          // В периоде, но еще не доступен (будущий час)
           const availableTime = getReportAvailableTime(selectedDate, hour);
           const minutesLeft = Math.ceil((availableTime - new Date()) / 60000);
           if (minutesLeft > 0) {
@@ -401,13 +668,11 @@ const DataEntry = () => {
         return;
       }
 
-      // Все проверки пройдены - можно создавать новый отчет
       setSelectedHour(hour);
       setIsReportSaved(false);
       return;
     }
 
-    // Для прошлых дней - только просмотр существующих отчетов
     if (selectedDate < getToday()) {
       if (existingReport) {
         setSelectedHour(hour);
@@ -418,7 +683,6 @@ const DataEntry = () => {
       return;
     }
 
-    // Для будущих дней
     toast.info(translations.futureDay);
   };
 
@@ -489,7 +753,7 @@ const DataEntry = () => {
     return items;
   };
 
-  // Проверка, все ли поля заполнены (0 считается валидным значением)
+  // Проверка, все ли поля заполнены
   const hasAllFieldsFilled = () => {
     const allItems = getAllItems();
     if (allItems.length === 0) return false;
@@ -510,7 +774,6 @@ const DataEntry = () => {
     return allFilled;
   };
 
-  // Проверка, можно ли редактировать
   const canEditCurrentReport = () => {
     if (!existingReport) return false;
     return canEditReport(
@@ -520,7 +783,13 @@ const DataEntry = () => {
     );
   };
 
-  const handleSave = async () => {
+  // Открытие модального окна подтверждения
+  const openConfirmModal = () => {
+    setIsConfirmModalOpen(true);
+  };
+
+  // Сохранение отчета
+  const handleConfirmSave = async () => {
     if (selectedHour === null) {
       toast.warning(
         script === "latin"
@@ -530,7 +799,6 @@ const DataEntry = () => {
       return;
     }
 
-    // Проверяем, все ли поля заполнены
     if (!hasAllFieldsFilled()) {
       toast.warning(translations.fillRequired);
       return;
@@ -548,115 +816,126 @@ const DataEntry = () => {
       return;
     }
 
-    // Проверяем, можно ли создать/редактировать отчет
-    const isToday = selectedDate === getToday();
-    const existingReport = reports.find((r) => r.hour === selectedHour);
+    setIsSaving(true);
 
-    // Если сегодня и нет отчета - проверяем можно ли создать
-    if (isToday && !existingReport) {
-      const canCreate = canCreateSpecificReport(
-        selectedDate,
-        selectedHour,
-        userData?.role,
-      );
-      if (!canCreate) {
+    try {
+      const isToday = selectedDate === getToday();
+      const existingReport = reports.find((r) => r.hour === selectedHour);
+
+      if (isToday && !existingReport) {
+        const canCreate = canCreateSpecificReport(
+          selectedDate,
+          selectedHour,
+          userData?.role,
+        );
+        if (!canCreate) {
+          toast.warning(
+            script === "latin"
+              ? "Hisobot yozish vaqti tugagan"
+              : "Ҳисобот ёзиш вақти тугаган",
+          );
+          setIsSaving(false);
+          return;
+        }
+      }
+
+      if (
+        existingReport &&
+        !canEditReport(selectedDate, selectedHour, userData?.role)
+      ) {
         toast.warning(
           script === "latin"
-            ? "Hisobot yozish vaqti tugagan"
-            : "Ҳисобот ёзиш вақти тугаган",
+            ? "Bu hisobotni tahrirlash vaqti o'tgan"
+            : "Бу ҳисоботни таҳрирлаш вақти ўтган",
         );
+        setIsSaving(false);
         return;
       }
-    }
 
-    // Если есть отчет, проверяем можно ли редактировать
-    if (
-      existingReport &&
-      !canEditReport(selectedDate, selectedHour, userData?.role)
-    ) {
-      toast.warning(
-        script === "latin"
-          ? "Bu hisobotni tahrirlash vaqti o'tgan"
-          : "Бу ҳисоботни таҳрирлаш вақти ўтган",
-      );
-      return;
-    }
+      const reportType = getReportTypeByHour(selectedHour);
 
-    const reportType = getReportTypeByHour(selectedHour);
+      const dataWithNames = {};
+      const categories = ["grs", "nodes", "interdistrict", "consumers", "grp"];
 
-    // Создаем копию данных с добавлением displayName
-    const dataWithNames = {};
-    const categories = ["grs", "nodes", "interdistrict", "consumers", "grp"];
+      categories.forEach((cat) => {
+        dataWithNames[cat] = {};
+        const categoryData = formData[cat] || {};
 
-    categories.forEach((cat) => {
-      dataWithNames[cat] = {};
-      const categoryData = formData[cat] || {};
+        Object.keys(categoryData).forEach((id) => {
+          const objectData = assignedObjects[cat]?.find(
+            (item) => item.id === id,
+          );
+          const displayName = objectData?.displayName || objectData?.name || id;
 
-      Object.keys(categoryData).forEach((id) => {
-        const objectData = assignedObjects[cat]?.find((item) => item.id === id);
-        const displayName = objectData?.displayName || objectData?.name || id;
-
-        dataWithNames[cat][id] = {
-          ...categoryData[id],
-          displayName: displayName,
-          name: objectData?.name || id,
-          ...(cat === "nodes" && objectData?.grsName
-            ? { grsName: objectData.grsName }
-            : {}),
-        };
+          dataWithNames[cat][id] = {
+            ...categoryData[id],
+            displayName: displayName,
+            name: objectData?.name || id,
+            ...(cat === "nodes" && objectData?.grsName
+              ? { grsName: objectData.grsName }
+              : {}),
+          };
+        });
       });
-    });
 
-    const reportData = {
-      type: reportType,
-      regionId,
-      regionName,
-      userId: user.uid,
-      userName: userData?.displayName || user.email,
-      date: selectedDate,
-      hour: selectedHour,
-      data: dataWithNames,
-      ...(reportType === "daily" && {
-        totals: {
-          totalPopulation: formData.totals?.totalPopulation || 0,
-          totalWholesale: formData.totals?.totalWholesale || 0,
-          losses: formData.totals?.losses || 0,
-        },
-      }),
-    };
-
-    let result;
-    if (isEditing && existingReport) {
-      result = await updateReport(existingReport.id, reportData);
-    } else {
-      result = await createReport(reportData);
-    }
-
-    if (result.success) {
-      toast.success(
-        script === "latin"
-          ? "Hisobot muvaffaqiyatli saqlandi"
-          : "Ҳисобот муваффақиятли сақланди",
-      );
-      setIsReportSaved(true);
-      setIsEditing(true);
-      await loadReports(selectedDate);
-
-      // Обновляем existingReport
-      const updated = await getReportByTime(
-        selectedDate,
-        selectedHour,
+      const reportData = {
+        type: reportType,
         regionId,
-      );
-      if (updated.success && updated.report) {
-        setExistingReport(updated.report);
-        setFormData(updated.report.data || {});
+        regionName,
+        userId: user.uid,
+        userName: userData?.displayName || user.email,
+        date: selectedDate,
+        hour: selectedHour,
+        data: dataWithNames,
+        ...(reportType === "daily" && {
+          totals: {
+            totalPopulation: formData.totals?.totalPopulation || 0,
+            totalWholesale: formData.totals?.totalWholesale || 0,
+            losses: formData.totals?.losses || 0,
+          },
+        }),
+      };
+
+      let result;
+      if (isEditing && existingReport) {
+        result = await updateReport(existingReport.id, reportData);
+      } else {
+        result = await createReport(reportData);
       }
-    } else {
+
+      if (result.success) {
+        toast.success(
+          script === "latin"
+            ? "Hisobot muvaffaqiyatli saqlandi"
+            : "Ҳисобот муваффақиятли сақланди",
+        );
+        setIsReportSaved(true);
+        setIsEditing(true);
+        setIsConfirmModalOpen(false);
+        await loadReports(selectedDate);
+
+        const updated = await getReportByTime(
+          selectedDate,
+          selectedHour,
+          regionId,
+        );
+        if (updated.success && updated.report) {
+          setExistingReport(updated.report);
+          setFormData(updated.report.data || {});
+        }
+      } else {
+        toast.error(
+          result.error ||
+            (script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди"),
+        );
+      }
+    } catch (error) {
+      console.error("Error saving report:", error);
       toast.error(
-        result.error ||
-          (script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди"),
+        script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
       );
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -681,7 +960,6 @@ const DataEntry = () => {
 
       const reportType = getReportTypeByHour(selectedHour);
 
-      // Сохраняем старые данные для логирования
       const oldData = existingReport?.data || {};
 
       const reportData = {
@@ -705,7 +983,6 @@ const DataEntry = () => {
       const result = await updateReport(existingReport.id, reportData);
 
       if (result.success) {
-        // Логируем редактирование отчета
         await log(ActionTypes.REPORT_EDITED, {
           reportId: existingReport.id,
           reportDate: selectedDate,
@@ -729,7 +1006,6 @@ const DataEntry = () => {
         setIsEditModalOpen(false);
         setEditingReport(null);
 
-        // Обновляем existingReport
         const updated = await getReportByTime(
           selectedDate,
           selectedHour,
@@ -790,37 +1066,37 @@ const DataEntry = () => {
     selectedDate === getToday() && canCreateReportForToday(selectedDate);
 
   return (
-    <div className="p-4 max-w-full mx-auto">
+    <div className="p-1 sm:p-4 max-w-full mx-auto">
       {/* Заголовок */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+      <div className="mb-2 sm:mb-6">
+        <h1 className="text-base sm:text-2xl font-bold text-gray-900 dark:text-white">
           {translations.title}
         </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-[10px] sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
           {translations.subtitle}
         </p>
       </div>
 
       {/* Выбор даты и времени */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-4 mb-2 sm:mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-[10px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5 sm:mb-1">
               {translations.selectDate}
             </label>
             <input
               type="date"
               value={selectedDate}
               onChange={handleDateChange}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+              className="w-full px-1.5 sm:px-3 py-1 sm:py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-[10px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5 sm:mb-1">
               {translations.selectTime}
             </label>
-            <div className="grid grid-cols-4 gap-1">
+            <div className="grid grid-cols-4 gap-0.5 sm:gap-1">
               {reportHours.map((hour) => {
                 const isActive = selectedHour === hour;
                 const hasReport = reports.some((r) => r.hour === hour);
@@ -852,16 +1128,13 @@ const DataEntry = () => {
                   borderColor = "border-blue-500";
                   isSelectable = true;
                 } else if (hasReport) {
-                  // Есть отчет
                   if (canEdit) {
-                    // Можно редактировать
                     bgColor =
                       "bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50";
                     textColor = "text-green-700 dark:text-green-300";
                     isSelectable = true;
                     indicator = "edit";
                   } else {
-                    // Только просмотр
                     bgColor = "bg-gray-100 dark:bg-gray-600";
                     textColor = "text-gray-500 dark:text-gray-400";
                     isSelectable = true;
@@ -870,14 +1143,12 @@ const DataEntry = () => {
                     reason = translations.viewOnly;
                   }
                 } else if (isToday && canCreateSpecific) {
-                  // Можно создать новый отчет (доступен)
                   bgColor =
                     "bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/50";
                   textColor = "text-yellow-700 dark:text-yellow-300";
                   isSelectable = true;
                   indicator = "create";
                 } else if (isToday && !canCreateSpecific && canCreateToday) {
-                  // В периоде, но еще не доступен (будущий час)
                   bgColor = "bg-gray-100 dark:bg-gray-600";
                   textColor = "text-gray-400 dark:text-gray-500";
                   isSelectable = false;
@@ -895,7 +1166,6 @@ const DataEntry = () => {
                       ? `${minutesLeft} ${translations.minutes}`
                       : translations.notAvailable;
                 } else if (isToday && !canCreateToday) {
-                  // Время создания отчетов закончилось (после 06:00 следующего дня)
                   bgColor = "bg-gray-100 dark:bg-gray-600";
                   textColor = "text-gray-400 dark:text-gray-500";
                   isSelectable = false;
@@ -903,7 +1173,6 @@ const DataEntry = () => {
                   opacity = "opacity-50";
                   reason = translations.creationPeriod;
                 } else if (selectedDate < getToday()) {
-                  // Прошлые дни
                   if (hasReport) {
                     bgColor = "bg-gray-100 dark:bg-gray-600";
                     textColor = "text-gray-500 dark:text-gray-400";
@@ -919,7 +1188,6 @@ const DataEntry = () => {
                     reason = translations.pastDay;
                   }
                 } else {
-                  // Будущие дни
                   bgColor = "bg-gray-100 dark:bg-gray-600";
                   textColor = "text-gray-400 dark:text-gray-500";
                   isSelectable = false;
@@ -941,28 +1209,26 @@ const DataEntry = () => {
                       handleHourSelect(hour);
                     }}
                     disabled={!isSelectable}
-                    className={`p-1.5 text-xs rounded-lg transition-all duration-200 relative border ${borderColor} ${bgColor} ${textColor} ${cursorClass} ${opacity}`}
+                    className={`p-0.5 sm:p-1 text-[8px] sm:text-xs rounded-lg transition-all duration-200 relative border ${borderColor} ${bgColor} ${textColor} ${cursorClass} ${opacity}`}
                     title={reason || ""}
                   >
                     <span>{formatTime(hour)}</span>
 
-                    {/* Индикаторы */}
                     {indicator === "edit" && (
-                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></span>
+                      <span className="absolute -top-0.5 -right-0.5 w-1 h-1 sm:w-2 sm:h-2 bg-green-500 rounded-full"></span>
                     )}
                     {indicator === "view" && (
-                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-gray-400 rounded-full"></span>
+                      <span className="absolute -top-0.5 -right-0.5 w-1 h-1 sm:w-2 sm:h-2 bg-gray-400 rounded-full"></span>
                     )}
                     {indicator === "create" && (
-                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+                      <span className="absolute -top-0.5 -right-0.5 w-1 h-1 sm:w-2 sm:h-2 bg-yellow-500 rounded-full animate-pulse"></span>
                     )}
                     {isActive && (
-                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                      <span className="absolute -top-0.5 -right-0.5 w-1 h-1 sm:w-2 sm:h-2 bg-blue-500 rounded-full animate-pulse"></span>
                     )}
 
-                    {/* Текст "только просмотр" */}
                     {isViewOnly && (
-                      <span className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 text-[6px] text-gray-400 whitespace-nowrap">
+                      <span className="absolute -bottom-2 sm:-bottom-3 left-1/2 transform -translate-x-1/2 text-[4px] sm:text-[6px] text-gray-400 whitespace-nowrap">
                         {translations.viewOnly}
                       </span>
                     )}
@@ -970,46 +1236,38 @@ const DataEntry = () => {
                 );
               })}
             </div>
-            <div className="mt-3 flex items-center gap-3 text-xs flex-wrap">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <div className="mt-1 sm:mt-2 flex flex-wrap items-center gap-1 sm:gap-3 text-[8px] sm:text-xs">
+              <div className="flex items-center gap-0.5 sm:gap-1">
+                <div className="w-1.5 h-1.5 sm:w-3 sm:h-3 bg-green-500 rounded-full"></div>
                 <span className="text-gray-500 dark:text-gray-400">
-                  {script === "latin"
-                    ? "Tahrirlash mumkin"
-                    : "Таҳрирлаш мумкин"}
+                  {script === "latin" ? "Tahrirlash" : "Таҳрирлаш"}
                 </span>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+              <div className="flex items-center gap-0.5 sm:gap-1">
+                <div className="w-1.5 h-1.5 sm:w-3 sm:h-3 bg-yellow-500 rounded-full animate-pulse"></div>
                 <span className="text-gray-500 dark:text-gray-400">
-                  {script === "latin" ? "Yaratish mumkin" : "Яратиш мумкин"}
+                  {script === "latin" ? "Yozish" : "Ёзиш"}
                 </span>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
+              <div className="flex items-center gap-0.5 sm:gap-1">
+                <div className="w-1.5 h-1.5 sm:w-3 sm:h-3 bg-gray-400 rounded-full"></div>
                 <span className="text-gray-500 dark:text-gray-400">
-                  {script === "latin" ? "Faqat ko'rish" : "Фақат кўриш"}
+                  {script === "latin" ? "Ko'rish" : "Кўриш"}
                 </span>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+              <div className="flex items-center gap-0.5 sm:gap-1">
+                <div className="w-1.5 h-1.5 sm:w-3 sm:h-3 bg-blue-500 rounded-full animate-pulse"></div>
                 <span className="text-gray-500 dark:text-gray-400">
                   {script === "latin" ? "Tanlangan" : "Танланган"}
                 </span>
               </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-3 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
-                <span className="text-gray-500 dark:text-gray-400">
-                  {script === "latin" ? "Mavjud emas" : "Мавжуд эмас"}
-                </span>
-              </div>
             </div>
-            <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            <div className="mt-0.5 sm:mt-1 text-[8px] sm:text-xs text-gray-400 dark:text-gray-500">
               {script === "latin"
                 ? "* Hisobot vaqtdan 10 daqiqa oldin ochiladi"
                 : "* Ҳисобот вақтдан 10 дақиқа олдин очилади"}
               {selectedDate === getToday() && (
-                <span className="ml-2 text-yellow-500">
+                <span className="ml-1 sm:ml-2 text-yellow-500">
                   {canCreateToday
                     ? script === "latin"
                       ? "✅ Yozish mumkin"
@@ -1023,14 +1281,14 @@ const DataEntry = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-[10px] sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5 sm:mb-1">
               {translations.reportType}
             </label>
-            <div className="flex items-center gap-2 p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+            <div className="flex items-center gap-1 sm:gap-2 p-1 sm:p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700/50">
               {selectedHour !== null ? (
                 <>
                   <span
-                    className={`px-2 py-1 text-xs rounded-full ${
+                    className={`px-1 sm:px-2 py-0.5 sm:py-1 text-[8px] sm:text-xs rounded-full ${
                       getReportTypeByHour(selectedHour) === "daily"
                         ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
                         : getReportTypeByHour(selectedHour) === "six_hour"
@@ -1040,24 +1298,28 @@ const DataEntry = () => {
                   >
                     {getReportTypeLabel(selectedHour)}
                   </span>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                  <span className="text-[10px] sm:text-sm text-gray-600 dark:text-gray-400">
                     {formatTime(selectedHour)}
                   </span>
                   {isReportSaved && (
-                    <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" />
-                      {script === "latin" ? "Saqlangan" : "Сақланган"}
+                    <span className="text-[8px] sm:text-xs text-green-600 dark:text-green-400 flex items-center gap-0.5 sm:gap-1">
+                      <CheckCircle className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                      <span className="hidden xs:inline">
+                        {script === "latin" ? "Saqlangan" : "Сақланган"}
+                      </span>
                     </span>
                   )}
                   {isReportSaved && !canEditCurrentReport() && (
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Eye className="w-3 h-3" />
-                      {script === "latin" ? "Faqat ko'rish" : "Фақат кўриш"}
+                    <span className="text-[8px] sm:text-xs text-gray-400 flex items-center gap-0.5 sm:gap-1">
+                      <Eye className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                      <span className="hidden xs:inline">
+                        {script === "latin" ? "Faqat ko'rish" : "Фақат кўриш"}
+                      </span>
                     </span>
                   )}
                 </>
               ) : (
-                <span className="text-sm text-gray-400">
+                <span className="text-[10px] sm:text-sm text-gray-400">
                   {script === "latin" ? "Vaqt tanlanmagan" : "Вақт танланмаган"}
                 </span>
               )}
@@ -1066,74 +1328,89 @@ const DataEntry = () => {
         </div>
       </div>
 
-      {/* Форма ввода данных - табличный вид */}
+      {/* Форма ввода данных - адаптивный табличный вид */}
       {selectedHour !== null && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex flex-wrap justify-between items-center gap-2">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <FileText className="w-5 h-5 text-blue-500" />
-              {isReportSaved ? (
-                <span className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                  <CheckCircle className="w-4 h-4" />
-                  {script === "latin"
-                    ? "Hisobot saqlangan"
-                    : "Ҳисобот сақланган"}
-                </span>
-              ) : isEditing ? (
-                <span className="flex items-center gap-2">
-                  <Edit className="w-4 h-4 text-blue-500" />
-                  {script === "latin"
-                    ? "Hisobotni tahrirlash"
-                    : "Ҳисоботни таҳрирлаш"}
-                </span>
-              ) : (
-                translations.enterData
-              )}
-              {isReportSaved && !canEditCurrentReport() && (
-                <span className="text-xs text-gray-400 ml-2 flex items-center gap-1">
-                  <Eye className="w-3 h-3" />
-                  {script === "latin" ? "(faqat ko'rish)" : "(фақат кўриш)"}
-                </span>
-              )}
-            </h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
-                <Search
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                  size={16}
-                />
-                <input
-                  type="text"
-                  placeholder={translations.search}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors w-48 sm:w-56"
-                />
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                <Calendar className="w-4 h-4" />
-                <span>{formatDateDisplay(selectedDate)}</span>
-                <span className="mx-1">|</span>
-                <Clock className="w-4 h-4" />
-                <span>{formatTime(selectedHour)}</span>
+          <div className="p-1.5 sm:p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+            <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2">
+              <h2 className="text-xs sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-1 sm:gap-2">
+                <FileText className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-blue-500" />
+                {isReportSaved ? (
+                  <span className="flex items-center gap-1 sm:gap-2 text-green-600 dark:text-green-400">
+                    <CheckCircle className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                    <span className="text-[10px] sm:text-base">
+                      {script === "latin"
+                        ? "Hisobot saqlangan"
+                        : "Ҳисобот сақланган"}
+                    </span>
+                  </span>
+                ) : isEditing ? (
+                  <span className="flex items-center gap-1 sm:gap-2">
+                    <Edit className="w-2.5 h-2.5 sm:w-4 sm:h-4 text-blue-500" />
+                    <span className="text-[10px] sm:text-base">
+                      {script === "latin"
+                        ? "Hisobotni tahrirlash"
+                        : "Ҳисоботни таҳрирлаш"}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] sm:text-base">
+                    {translations.enterData}
+                  </span>
+                )}
+                {isReportSaved && !canEditCurrentReport() && (
+                  <span className="text-[8px] sm:text-xs text-gray-400 flex items-center gap-0.5 sm:gap-1">
+                    <Eye className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                    <span className="hidden xs:inline">
+                      {script === "latin" ? "(faqat ko'rish)" : "(фақат кўриш)"}
+                    </span>
+                  </span>
+                )}
+              </h2>
+              <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                <div className="relative w-24 sm:w-48">
+                  <Search
+                    className="absolute left-1.5 sm:left-2 top-1/2 transform -translate-y-1/2 text-gray-400"
+                    size={10}
+                  />
+                  <input
+                    type="text"
+                    placeholder={translations.search}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-5 sm:pl-6 pr-1.5 sm:pr-2 py-0.5 sm:py-1 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                  />
+                </div>
+                <div className="flex items-center gap-0.5 sm:gap-2 text-[8px] sm:text-sm text-gray-500 dark:text-gray-400">
+                  <Calendar className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                  <span className="hidden xs:inline">
+                    {formatDateDisplay(selectedDate)}
+                  </span>
+                  <span className="xs:hidden text-[8px]">
+                    {selectedDate.slice(5)}
+                  </span>
+                  <span className="mx-0.5 sm:mx-1">|</span>
+                  <Clock className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                  <span>{formatTime(selectedHour)}</span>
+                </div>
               </div>
             </div>
           </div>
 
           {loadingObjects ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-              <span className="ml-3 text-gray-600 dark:text-gray-400">
+            <div className="flex items-center justify-center py-4 sm:py-12">
+              <Loader2 className="w-5 h-5 sm:w-8 sm:h-8 animate-spin text-blue-500" />
+              <span className="ml-1.5 sm:ml-3 text-xs sm:text-base text-gray-600 dark:text-gray-400">
                 {translations.loadingObjects}
               </span>
             </div>
           ) : !hasObjects ? (
-            <div className="text-center py-12">
-              <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300">
+            <div className="text-center py-4 sm:py-12">
+              <AlertCircle className="w-8 h-8 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-1 sm:mb-3" />
+              <h3 className="text-sm sm:text-lg font-medium text-gray-700 dark:text-gray-300">
                 {translations.noAssignedItems}
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-[10px] sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
                 {script === "latin"
                   ? "Sizga biriktirilgan obyektlar mavjud emas"
                   : "Сизга бириктирилган объектлар мавжуд эмас"}
@@ -1142,22 +1419,22 @@ const DataEntry = () => {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[400px] sm:min-w-full">
                   <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
-                        {translations.name}
+                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {translations.category}
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[200px]">
+                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[60px] sm:min-w-[120px]">
                         {translations.object}
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
+                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[50px] sm:min-w-[100px]">
                         {translations.flow}
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
+                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[50px] sm:min-w-[100px]">
                         {translations.pressureIn}
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
+                      <th className="px-1 py-1 sm:px-3 sm:py-2 text-left text-[8px] sm:text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[50px] sm:min-w-[100px]">
                         {translations.pressureOut}
                       </th>
                     </tr>
@@ -1174,17 +1451,17 @@ const DataEntry = () => {
                           key={`${item.category}_${item.id}`}
                           className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                         >
-                          <td className="px-4 py-3">
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
+                            <span className="text-[8px] sm:text-sm font-medium text-gray-700 dark:text-gray-300">
                               {item.categoryLabel}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
-                            <span className="text-sm text-gray-900 dark:text-white">
+                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
+                            <span className="text-[8px] sm:text-sm text-gray-900 dark:text-white truncate max-w-[60px] sm:max-w-none inline-block">
                               {item.displayName || item.name || item.id}
                             </span>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
                             {fields.includes("flow") ? (
                               <input
                                 type="number"
@@ -1204,18 +1481,20 @@ const DataEntry = () => {
                                   )
                                 }
                                 disabled={isDisabled}
-                                className={`w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                className={`w-12 sm:w-24 px-0.5 sm:px-2 py-0.5 sm:py-1.5 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                                   isDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
                                 }`}
-                                placeholder="0.00"
+                                placeholder="0"
                               />
                             ) : (
-                              <span className="text-sm text-gray-400">—</span>
+                              <span className="text-[8px] sm:text-sm text-gray-400">
+                                —
+                              </span>
                             )}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
                             {fields.includes("pressureIn") ? (
                               <input
                                 type="number"
@@ -1235,18 +1514,20 @@ const DataEntry = () => {
                                   )
                                 }
                                 disabled={isDisabled}
-                                className={`w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                className={`w-12 sm:w-24 px-0.5 sm:px-2 py-0.5 sm:py-1.5 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                                   isDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
                                 }`}
-                                placeholder="0.00"
+                                placeholder="0"
                               />
                             ) : (
-                              <span className="text-sm text-gray-400">—</span>
+                              <span className="text-[8px] sm:text-sm text-gray-400">
+                                —
+                              </span>
                             )}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-0.5 py-1 sm:px-3 sm:py-2">
                             {fields.includes("pressureOut") ? (
                               <input
                                 type="number"
@@ -1266,15 +1547,17 @@ const DataEntry = () => {
                                   )
                                 }
                                 disabled={isDisabled}
-                                className={`w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                className={`w-12 sm:w-24 px-0.5 sm:px-2 py-0.5 sm:py-1.5 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                                   isDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
                                 }`}
-                                placeholder="0.00"
+                                placeholder="0"
                               />
                             ) : (
-                              <span className="text-sm text-gray-400">—</span>
+                              <span className="text-[8px] sm:text-sm text-gray-400">
+                                —
+                              </span>
                             )}
                           </td>
                         </tr>
@@ -1286,16 +1569,16 @@ const DataEntry = () => {
 
               {/* Суточный отчет - дополнительные поля */}
               {isDailyReport && (
-                <div className="p-4 border-t border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
-                  <h3 className="text-sm font-medium text-purple-800 dark:text-purple-300 mb-3 flex items-center gap-2">
-                    <span className="w-1 h-4 bg-purple-500 rounded-full"></span>
+                <div className="p-1.5 sm:p-4 border-t border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
+                  <h3 className="text-[10px] sm:text-sm font-medium text-purple-800 dark:text-purple-300 mb-1 sm:mb-3 flex items-center gap-1 sm:gap-2">
+                    <span className="w-0.5 h-2 sm:h-4 bg-purple-500 rounded-full"></span>
                     {script === "latin"
                       ? "Kunlik qo'shimcha ma'lumotlar"
                       : "Кунлик қўшимча маълумотлар"}
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-1 sm:gap-3">
                     <div>
-                      <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                      <label className="block text-[8px] sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
                         {translations.totalPopulation}
                       </label>
                       <input
@@ -1321,16 +1604,16 @@ const DataEntry = () => {
                           }));
                         }}
                         disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                        className={`w-full px-1 sm:px-3 py-0.5 sm:py-2 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                           isReportSaved && !canEditCurrentReport()
                             ? "opacity-50 cursor-not-allowed"
                             : ""
                         }`}
-                        placeholder="0.00"
+                        placeholder="0"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                      <label className="block text-[8px] sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
                         {translations.totalWholesale}
                       </label>
                       <input
@@ -1356,16 +1639,16 @@ const DataEntry = () => {
                           }));
                         }}
                         disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                        className={`w-full px-1 sm:px-3 py-0.5 sm:py-2 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                           isReportSaved && !canEditCurrentReport()
                             ? "opacity-50 cursor-not-allowed"
                             : ""
                         }`}
-                        placeholder="0.00"
+                        placeholder="0"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1">
+                    <div className="xs:col-span-2 sm:col-span-1">
+                      <label className="block text-[8px] sm:text-xs text-gray-600 dark:text-gray-400 mb-0.5 sm:mb-1">
                         {translations.losses}
                       </label>
                       <input
@@ -1391,12 +1674,12 @@ const DataEntry = () => {
                           }));
                         }}
                         disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
+                        className={`w-full px-1 sm:px-3 py-0.5 sm:py-2 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
                           isReportSaved && !canEditCurrentReport()
                             ? "opacity-50 cursor-not-allowed"
                             : ""
                         }`}
-                        placeholder="0.00"
+                        placeholder="0"
                       />
                     </div>
                   </div>
@@ -1404,53 +1687,50 @@ const DataEntry = () => {
               )}
 
               {/* Кнопки */}
-              <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex flex-wrap gap-3 justify-end">
+              <div className="px-1.5 py-1.5 sm:px-4 sm:py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex flex-wrap gap-1 sm:gap-3 justify-end">
                 <button
                   onClick={() => {
                     setFormData({});
                     setSelectedHour(null);
                     setIsReportSaved(false);
                   }}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2"
+                  className="px-2 py-1 sm:px-4 sm:py-2 text-[8px] sm:text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-0.5 sm:gap-2"
                 >
-                  <X className="w-4 h-4" />
-                  {translations.cancel}
+                  <X className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                  <span className="hidden xs:inline">
+                    {translations.cancel}
+                  </span>
                 </button>
 
                 {isReportSaved ? (
                   <button
                     onClick={handleEditClick}
                     disabled={!canEdit}
-                    className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    className={`px-2 py-1 sm:px-4 sm:py-2 text-[8px] sm:text-sm rounded-lg transition-colors flex items-center gap-0.5 sm:gap-2 ${
                       canEdit
                         ? "bg-blue-600 hover:bg-blue-700 text-white"
                         : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                     }`}
                   >
-                    <Edit className="w-4 h-4" />
-                    {translations.edit}
+                    <Edit className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                    <span className="hidden xs:inline">
+                      {translations.edit}
+                    </span>
                   </button>
                 ) : (
                   <button
-                    onClick={handleSave}
+                    onClick={openConfirmModal}
                     disabled={loading || !hasAllFieldsFilled()}
-                    className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                    className={`px-2 py-1 sm:px-4 sm:py-2 text-[8px] sm:text-sm rounded-lg transition-colors flex items-center gap-0.5 sm:gap-2 ${
                       loading || !hasAllFieldsFilled()
                         ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                         : "bg-green-600 hover:bg-green-700 text-white"
                     }`}
                   >
-                    {loading ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        {translations.saving}
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4" />
-                        {isEditing ? translations.edit : translations.save}
-                      </>
-                    )}
+                    <Save className="w-2.5 h-2.5 sm:w-4 sm:h-4" />
+                    <span className="hidden xs:inline">
+                      {isEditing ? translations.edit : translations.save}
+                    </span>
                   </button>
                 )}
               </div>
@@ -1460,20 +1740,30 @@ const DataEntry = () => {
       )}
 
       {selectedHour === null && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-8 text-center">
-          <Clock className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-          <h3 className="text-lg font-medium text-gray-700 dark:text-gray-300">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-8 text-center">
+          <Clock className="w-8 h-8 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-1 sm:mb-3" />
+          <h3 className="text-sm sm:text-lg font-medium text-gray-700 dark:text-gray-300">
             {script === "latin"
               ? "Hisobot vaqtini tanlang"
               : "Ҳисобот вақтини танланг"}
           </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-[10px] sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5 sm:mt-1">
             {script === "latin"
               ? "Iltimos, yuqoridagi kalendardan sana va vaqtni tanlang"
               : "Илтимос, юқоридаги календардан сана ва вақтни танланг"}
           </p>
         </div>
       )}
+
+      {/* Модальное окно подтверждения */}
+      <ConfirmModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={handleConfirmSave}
+        data={formData}
+        translations={translations}
+        loading={isSaving}
+      />
 
       {/* Модальное окно редактирования */}
       {isEditModalOpen && editingReport && (

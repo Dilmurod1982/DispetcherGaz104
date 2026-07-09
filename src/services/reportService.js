@@ -138,25 +138,46 @@ export const updateMonthMetadata = async (monthKey, data) => {
       currentData = newDocSnap.exists() ? newDocSnap.data() : {};
     }
 
-    // Безопасно получаем регионы
-    const regions = currentData.regions || [];
+    // Безопасно получаем регионы (всегда массив)
+    const regions = Array.isArray(currentData.regions)
+      ? currentData.regions
+      : [];
 
-    // Обновляем регионы, если передан новый регион
-    let updatedData = { ...data };
-    if (data.regionId) {
-      if (!regions.includes(data.regionId)) {
-        updatedData.regions = [...regions, data.regionId];
-      } else {
-        updatedData.regions = regions;
-      }
-      // Удаляем regionId из data, чтобы не пытаться обновить несуществующее поле
-      delete updatedData.regionId;
+    // Подготавливаем данные для обновления
+    const updateData = {};
+
+    // Обновляем reportCount если передан
+    if (data.reportCount !== undefined) {
+      updateData.reportCount = data.reportCount;
     }
 
-    await updateDoc(docRef, {
-      ...updatedData,
-      lastUpdated: serverTimestamp(),
-    });
+    // Обновляем lastReportDate если передан
+    if (data.lastReportDate) {
+      updateData.lastReportDate = data.lastReportDate;
+    }
+
+    // Обновляем регионы, если передан новый регион
+    if (data.regionId) {
+      // Проверяем, существует ли уже регион в списке
+      const regionExists = regions.some((r) => r === data.regionId);
+      if (!regionExists) {
+        // Добавляем новый регион
+        updateData.regions = [...regions, data.regionId];
+      } else {
+        // Регион уже существует, оставляем как есть
+        updateData.regions = regions;
+      }
+    }
+
+    // Обновляем статус если передан
+    if (data.status) {
+      updateData.status = data.status;
+    }
+
+    // Добавляем время обновления
+    updateData.lastUpdated = serverTimestamp();
+
+    await updateDoc(docRef, updateData);
 
     return true;
   } catch (error) {
@@ -477,56 +498,4 @@ export const exportReportsToCSV = (reports) => {
     "\n",
   );
   return csv;
-};
-
-export const canEditReport = (reportDate, reportHour, userRole) => {
-  const now = new Date();
-  const reportDateTime = new Date(
-    `${reportDate}T${String(reportHour).padStart(2, "0")}:00:00`,
-  );
-
-  // Для районных диспетчеров
-  if (userRole === "ray_disp") {
-    // Для суточного отчета (00:00) - можно редактировать до 04:00 следующего дня
-    if (reportHour === 0) {
-      const nextDay = new Date(reportDateTime);
-      nextDay.setDate(nextDay.getDate() + 1);
-      nextDay.setHours(4, 0, 0, 0);
-      return now <= nextDay;
-    }
-
-    // Для остальных отчетов - можно редактировать до 00:00 следующего дня
-    const nextDay = new Date(reportDateTime);
-    nextDay.setDate(nextDay.getDate() + 1);
-    nextDay.setHours(0, 0, 0, 0);
-    return now <= nextDay;
-  }
-
-  // Для областных диспетчеров - можно редактировать всегда (с разрешения)
-  if (userRole === "vil_disp") {
-    return true;
-  }
-
-  return false;
-};
-
-// Получить время до которого можно редактировать
-export const getEditDeadline = (reportDate, reportHour) => {
-  const reportDateTime = new Date(
-    `${reportDate}T${String(reportHour).padStart(2, "0")}:00:00`,
-  );
-
-  if (reportHour === 0) {
-    // Суточный отчет - до 04:00 следующего дня
-    const deadline = new Date(reportDateTime);
-    deadline.setDate(deadline.getDate() + 1);
-    deadline.setHours(4, 0, 0, 0);
-    return deadline;
-  }
-
-  // Остальные отчеты - до 00:00 следующего дня
-  const deadline = new Date(reportDateTime);
-  deadline.setDate(deadline.getDate() + 1);
-  deadline.setHours(0, 0, 0, 0);
-  return deadline;
 };
