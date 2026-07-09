@@ -29,7 +29,10 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
     consumers: script === "latin" ? "Iste'molchilar" : "Истеъмолчилар",
     grp: "ГТҚ",
     flow: script === "latin" ? "Sarfi (m³)" : "Сарфи (м³)",
-    pressure: script === "latin" ? "Bosim (kgc/s²)" : "Босим (кгс/с²)",
+    pressureIn:
+      script === "latin" ? "Kirish bosimi (kgc/s²)" : "Кириш босими (кгс/с²)",
+    pressureOut:
+      script === "latin" ? "Chiqish bosimi (kgc/s²)" : "Чиқиш босими (кгс/с²)",
     noData: script === "latin" ? "Ma'lumot yo'q" : "Маълумот йўқ",
     totalPopulation:
       script === "latin" ? "Aholi umumiy sarfi" : "Аҳоли умумий сарфи",
@@ -41,11 +44,11 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
   // Определение полей для каждой категории
   const getCategoryFields = (category) => {
     const fields = {
-      grs: ["flow", "pressure"],
-      nodes: ["flow", "pressure"],
-      interdistrict: ["flow", "pressure"],
+      grs: ["flow", "pressureIn", "pressureOut"],
+      nodes: ["flow", "pressureIn", "pressureOut"],
+      interdistrict: ["flow", "pressureIn", "pressureOut"],
       consumers: ["flow"],
-      grp: ["pressure"],
+      grp: ["pressureIn", "pressureOut"],
     };
     return fields[category] || [];
   };
@@ -81,7 +84,6 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
   };
 
   const handleSubmit = async () => {
-    // Проверяем, есть ли изменения
     const hasChanges =
       JSON.stringify(formData) !== JSON.stringify(originalData);
     if (!hasChanges) {
@@ -93,7 +95,6 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
       return;
     }
 
-    // Логируем перед сохранением
     await log(ActionTypes.REPORT_EDITED, {
       reportId: reportData.id,
       reportDate: reportData.date,
@@ -103,7 +104,6 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
       oldData: originalData,
       newData: formData,
       changes: {
-        // Здесь можно добавить детальные изменения
         hasChanges: true,
       },
     });
@@ -174,7 +174,10 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                     {translations.flow}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
-                    {translations.pressure}
+                    {translations.pressureIn}
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
+                    {translations.pressureOut}
                   </th>
                 </tr>
               </thead>
@@ -210,7 +213,11 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                             <input
                               type="number"
                               step="0.01"
-                              value={item.flow || ""}
+                              value={
+                                item.flow !== undefined && item.flow !== null
+                                  ? item.flow
+                                  : ""
+                              }
                               onChange={(e) =>
                                 handleInputChange(
                                   cat.key,
@@ -227,16 +234,47 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {fields.includes("pressure") ? (
+                          {fields.includes("pressureIn") ? (
                             <input
                               type="number"
                               step="0.01"
-                              value={item.pressure || ""}
+                              value={
+                                item.pressureIn !== undefined &&
+                                item.pressureIn !== null
+                                  ? item.pressureIn
+                                  : ""
+                              }
                               onChange={(e) =>
                                 handleInputChange(
                                   cat.key,
                                   id,
-                                  "pressure",
+                                  "pressureIn",
+                                  parseFloat(e.target.value) || 0,
+                                )
+                              }
+                              className="w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                              placeholder="0.00"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {fields.includes("pressureOut") ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={
+                                item.pressureOut !== undefined &&
+                                item.pressureOut !== null
+                                  ? item.pressureOut
+                                  : ""
+                              }
+                              onChange={(e) =>
+                                handleInputChange(
+                                  cat.key,
+                                  id,
+                                  "pressureOut",
                                   parseFloat(e.target.value) || 0,
                                 )
                               }
@@ -271,7 +309,12 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                   <input
                     type="number"
                     step="0.01"
-                    value={formData.totals.totalPopulation || ""}
+                    value={
+                      formData.totals.totalPopulation !== undefined &&
+                      formData.totals.totalPopulation !== null
+                        ? formData.totals.totalPopulation
+                        : ""
+                    }
                     onChange={(e) =>
                       handleTotalsChange(
                         "totalPopulation",
@@ -289,7 +332,12 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                   <input
                     type="number"
                     step="0.01"
-                    value={formData.totals.totalWholesale || ""}
+                    value={
+                      formData.totals.totalWholesale !== undefined &&
+                      formData.totals.totalWholesale !== null
+                        ? formData.totals.totalWholesale
+                        : ""
+                    }
                     onChange={(e) =>
                       handleTotalsChange(
                         "totalWholesale",
@@ -307,7 +355,12 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                   <input
                     type="number"
                     step="0.01"
-                    value={formData.totals.losses || ""}
+                    value={
+                      formData.totals.losses !== undefined &&
+                      formData.totals.losses !== null
+                        ? formData.totals.losses
+                        : ""
+                    }
                     onChange={(e) =>
                       handleTotalsChange(
                         "losses",

@@ -26,6 +26,12 @@ import {
   formatDateDisplay,
   formatTime,
   getReportTypeByHour,
+  isReportAvailable,
+  canEditReport,
+  canCreateReportForToday,
+  canCreateSpecificReport,
+  getReportAvailableTime,
+  getEditDeadline,
 } from "../../../services/reportUtils";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../../firebase/config";
@@ -68,6 +74,7 @@ const DataEntry = () => {
   const [editingReport, setEditingReport] = useState(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [isReportSaved, setIsReportSaved] = useState(false);
+  const [reportAvailability, setReportAvailability] = useState({});
 
   const translations = {
     title:
@@ -104,7 +111,10 @@ const DataEntry = () => {
     consumers: script === "latin" ? "Iste'molchilar" : "Истеъмолчилар",
     grp: "ГТҚ",
     flow: script === "latin" ? "Sarfi (m³)" : "Сарфи (м³)",
-    pressure: script === "latin" ? "Bosim (kgc/s²)" : "Босим (кгс/с²)",
+    pressureIn:
+      script === "latin" ? "Kirish bosimi (kgc/s²)" : "Кириш босими (кгс/с²)",
+    pressureOut:
+      script === "latin" ? "Chiqish bosimi (kgc/s²)" : "Чиқиш босими (кгс/с²)",
     totalPopulation:
       script === "latin" ? "Aholi umumiy sarfi" : "Аҳоли умумий сарфи",
     totalWholesale:
@@ -135,6 +145,23 @@ const DataEntry = () => {
       script === "latin"
         ? "Iltimos, barcha maydonlarni to'ldiring"
         : "Илтимос, барча майдонларни тўлдиринг",
+    notAvailable:
+      script === "latin" ? "Hisobot hali ochilmagan" : "Ҳисобот ҳали очилмаган",
+    availableIn:
+      script === "latin"
+        ? "daqiqadan so'ng ochiladi"
+        : "дақиқадан сўнг очилади",
+    editTimeExpired:
+      script === "latin" ? "Tahrirlash vaqti o'tgan" : "Таҳрирлаш вақти ўтган",
+    pastDay: script === "latin" ? "O'tgan kun" : "Ўтган кун",
+    futureDay: script === "latin" ? "Kelajak kun" : "Келажак кун",
+    reportAvailable: script === "latin" ? "Hisobot ochiq" : "Ҳисобот очиқ",
+    minutes: script === "latin" ? "daqiqa" : "дақиқа",
+    viewOnly: script === "latin" ? "faqat ko'rish" : "фақат кўриш",
+    creationPeriod:
+      script === "latin"
+        ? "Hisobot yozish vaqti 06:00 dan 06:00 gacha"
+        : "Ҳисобот ёзиш вақти 06:00 дан 06:00 гача",
   };
 
   // Загрузка прикрепленных объектов
@@ -280,6 +307,15 @@ const DataEntry = () => {
     }
   }, [selectedHour, selectedDate]);
 
+  // Проверка доступности отчетов при изменении даты или времени
+  useEffect(() => {
+    const availability = {};
+    reportHours.forEach((hour) => {
+      availability[hour] = isReportAvailable(selectedDate, hour);
+    });
+    setReportAvailability(availability);
+  }, [selectedDate, reportHours]);
+
   const checkExistingReport = async () => {
     const regionId = userData?.assignedCities?.[0];
     if (!regionId) return;
@@ -308,15 +344,86 @@ const DataEntry = () => {
   };
 
   const handleHourSelect = (hour) => {
-    setSelectedHour(hour);
-    setIsReportSaved(false);
+    const isToday = selectedDate === getToday();
+    const existingReport = reports.find((r) => r.hour === hour);
+    const isAvailable = isReportAvailable(selectedDate, hour);
+    const canCreateSpecific = canCreateSpecificReport(
+      selectedDate,
+      hour,
+      userData?.role,
+    );
+
+    // Для сегодняшнего дня
+    if (isToday) {
+      // Если есть отчет - проверяем можно ли редактировать
+      if (existingReport) {
+        const canEdit = canEditReport(selectedDate, hour, userData?.role);
+        if (canEdit) {
+          setSelectedHour(hour);
+          setIsReportSaved(false);
+          return;
+        } else {
+          toast.info(
+            script === "latin"
+              ? "Bu hisobotni faqat ko'rish mumkin"
+              : "Бу ҳисоботни фақат кўриш мумкин",
+          );
+          setSelectedHour(hour);
+          setIsReportSaved(true);
+          return;
+        }
+      }
+
+      // Если нет отчета - проверяем можно ли создать
+      if (!canCreateSpecific) {
+        // Проверяем, в периоде ли создания (06:00-06:00)
+        const canCreateToday = canCreateReportForToday(selectedDate);
+        if (!canCreateToday) {
+          toast.warning(
+            script === "latin"
+              ? "Hisobot yozish vaqti tugagan (06:00 dan 06:00 gacha)"
+              : "Ҳисобот ёзиш вақти тугаган (06:00 дан 06:00 гача)",
+          );
+        } else {
+          // В периоде, но еще не доступен (будущий час)
+          const availableTime = getReportAvailableTime(selectedDate, hour);
+          const minutesLeft = Math.ceil((availableTime - new Date()) / 60000);
+          if (minutesLeft > 0) {
+            toast.info(
+              script === "latin"
+                ? `${formatTime(hour)} uchun hisobot ${minutesLeft} daqiqadan so'ng ochiladi`
+                : `${formatTime(hour)} учун ҳисобот ${minutesLeft} дақиқадан сўнг очилади`,
+            );
+          } else {
+            toast.info(translations.notAvailable);
+          }
+        }
+        return;
+      }
+
+      // Все проверки пройдены - можно создавать новый отчет
+      setSelectedHour(hour);
+      setIsReportSaved(false);
+      return;
+    }
+
+    // Для прошлых дней - только просмотр существующих отчетов
+    if (selectedDate < getToday()) {
+      if (existingReport) {
+        setSelectedHour(hour);
+        setIsReportSaved(true);
+      } else {
+        toast.info(translations.pastDay);
+      }
+      return;
+    }
+
+    // Для будущих дней
+    toast.info(translations.futureDay);
   };
 
   const handleInputChange = (category, id, field, value) => {
-    // Если значение пустая строка - оставляем как есть
-    // Если число - сохраняем (0 разрешен)
     const processedValue = value === "" ? "" : parseFloat(value);
-    // Если после парсинга получилось NaN, ставим 0
     const finalValue = isNaN(processedValue) ? 0 : processedValue;
 
     setFormData((prev) => ({
@@ -334,11 +441,11 @@ const DataEntry = () => {
   // Получение полей для категории
   const getFieldsForCategory = (category) => {
     const fields = {
-      grs: ["flow", "pressure"],
-      nodes: ["flow", "pressure"],
-      interdistrict: ["flow", "pressure"],
+      grs: ["flow", "pressureIn", "pressureOut"],
+      nodes: ["flow", "pressureIn", "pressureOut"],
+      interdistrict: ["flow", "pressureIn", "pressureOut"],
       consumers: ["flow"],
-      grp: ["pressure"],
+      grp: ["pressureIn", "pressureOut"],
     };
     return fields[category] || [];
   };
@@ -394,8 +501,6 @@ const DataEntry = () => {
 
       fields.forEach((field) => {
         const value = itemData[field];
-        // Проверяем только на undefined, null и пустую строку
-        // 0 - валидное значение (означает что объект не работает/на ремонте)
         if (value === undefined || value === null || value === "") {
           allFilled = false;
         }
@@ -403,6 +508,16 @@ const DataEntry = () => {
     });
 
     return allFilled;
+  };
+
+  // Проверка, можно ли редактировать
+  const canEditCurrentReport = () => {
+    if (!existingReport) return false;
+    return canEditReport(
+      existingReport.date,
+      existingReport.hour,
+      userData?.role,
+    );
   };
 
   const handleSave = async () => {
@@ -429,6 +544,40 @@ const DataEntry = () => {
         script === "latin"
           ? "Sizga biriktirilgan region topilmadi"
           : "Сизга бириктирилган регион топилмади",
+      );
+      return;
+    }
+
+    // Проверяем, можно ли создать/редактировать отчет
+    const isToday = selectedDate === getToday();
+    const existingReport = reports.find((r) => r.hour === selectedHour);
+
+    // Если сегодня и нет отчета - проверяем можно ли создать
+    if (isToday && !existingReport) {
+      const canCreate = canCreateSpecificReport(
+        selectedDate,
+        selectedHour,
+        userData?.role,
+      );
+      if (!canCreate) {
+        toast.warning(
+          script === "latin"
+            ? "Hisobot yozish vaqti tugagan"
+            : "Ҳисобот ёзиш вақти тугаган",
+        );
+        return;
+      }
+    }
+
+    // Если есть отчет, проверяем можно ли редактировать
+    if (
+      existingReport &&
+      !canEditReport(selectedDate, selectedHour, userData?.role)
+    ) {
+      toast.warning(
+        script === "latin"
+          ? "Bu hisobotni tahrirlash vaqti o'tgan"
+          : "Бу ҳисоботни таҳрирлаш вақти ўтган",
       );
       return;
     }
@@ -514,6 +663,10 @@ const DataEntry = () => {
   // Открытие модального окна редактирования
   const handleEditClick = () => {
     if (existingReport) {
+      if (!canEditCurrentReport()) {
+        toast.warning(translations.editTimeExpired);
+        return;
+      }
       setEditingReport(existingReport);
       setIsEditModalOpen(true);
     }
@@ -629,6 +782,13 @@ const DataEntry = () => {
   );
   const hasObjects = filteredItems.length > 0;
 
+  // Проверка, можно ли редактировать
+  const canEdit = isReportSaved ? canEditCurrentReport() : true;
+
+  // Проверка, можно ли создавать отчеты для сегодняшнего дня
+  const canCreateToday =
+    selectedDate === getToday() && canCreateReportForToday(selectedDate);
+
   return (
     <div className="p-4 max-w-full mx-auto">
       {/* Заголовок */}
@@ -664,63 +824,171 @@ const DataEntry = () => {
               {reportHours.map((hour) => {
                 const isActive = selectedHour === hour;
                 const hasReport = reports.some((r) => r.hour === hour);
-                const isCurrentHour =
-                  hour <= getCurrentHour() && selectedDate === getToday();
+                const isToday = selectedDate === getToday();
+                const isAvailable = isReportAvailable(selectedDate, hour);
+                const canCreateSpecific = canCreateSpecificReport(
+                  selectedDate,
+                  hour,
+                  userData?.role,
+                );
+                const canEdit = hasReport
+                  ? canEditReport(selectedDate, hour, userData?.role)
+                  : false;
+                const isViewOnly = hasReport && !canEdit;
 
+                let isSelectable = false;
+                let reason = "";
                 let bgColor =
-                  "bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600";
+                  "bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700";
+                let textColor = "text-gray-700 dark:text-gray-300";
+                let borderColor = "border-transparent";
+                let cursorClass = "cursor-pointer";
+                let opacity = "opacity-100";
+                let indicator = null;
+
                 if (isActive) {
-                  bgColor = "bg-blue-500 text-white hover:bg-blue-600";
+                  bgColor = "bg-blue-500 hover:bg-blue-600";
+                  textColor = "text-white";
+                  borderColor = "border-blue-500";
+                  isSelectable = true;
                 } else if (hasReport) {
+                  // Есть отчет
+                  if (canEdit) {
+                    // Можно редактировать
+                    bgColor =
+                      "bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50";
+                    textColor = "text-green-700 dark:text-green-300";
+                    isSelectable = true;
+                    indicator = "edit";
+                  } else {
+                    // Только просмотр
+                    bgColor = "bg-gray-100 dark:bg-gray-600";
+                    textColor = "text-gray-500 dark:text-gray-400";
+                    isSelectable = true;
+                    cursorClass = "cursor-pointer";
+                    indicator = "view";
+                    reason = translations.viewOnly;
+                  }
+                } else if (isToday && canCreateSpecific) {
+                  // Можно создать новый отчет (доступен)
                   bgColor =
-                    "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50";
-                } else if (!isCurrentHour && selectedDate === getToday()) {
-                  bgColor =
-                    "bg-gray-100 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed";
+                    "bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/50";
+                  textColor = "text-yellow-700 dark:text-yellow-300";
+                  isSelectable = true;
+                  indicator = "create";
+                } else if (isToday && !canCreateSpecific && canCreateToday) {
+                  // В периоде, но еще не доступен (будущий час)
+                  bgColor = "bg-gray-100 dark:bg-gray-600";
+                  textColor = "text-gray-400 dark:text-gray-500";
+                  isSelectable = false;
+                  cursorClass = "cursor-not-allowed";
+                  opacity = "opacity-50";
+                  const availableTime = getReportAvailableTime(
+                    selectedDate,
+                    hour,
+                  );
+                  const minutesLeft = Math.ceil(
+                    (availableTime - new Date()) / 60000,
+                  );
+                  reason =
+                    minutesLeft > 0
+                      ? `${minutesLeft} ${translations.minutes}`
+                      : translations.notAvailable;
+                } else if (isToday && !canCreateToday) {
+                  // Время создания отчетов закончилось (после 06:00 следующего дня)
+                  bgColor = "bg-gray-100 dark:bg-gray-600";
+                  textColor = "text-gray-400 dark:text-gray-500";
+                  isSelectable = false;
+                  cursorClass = "cursor-not-allowed";
+                  opacity = "opacity-50";
+                  reason = translations.creationPeriod;
+                } else if (selectedDate < getToday()) {
+                  // Прошлые дни
+                  if (hasReport) {
+                    bgColor = "bg-gray-100 dark:bg-gray-600";
+                    textColor = "text-gray-500 dark:text-gray-400";
+                    isSelectable = true;
+                    reason = translations.pastDay;
+                    indicator = "view";
+                  } else {
+                    bgColor = "bg-gray-100 dark:bg-gray-600";
+                    textColor = "text-gray-400 dark:text-gray-500";
+                    isSelectable = false;
+                    cursorClass = "cursor-not-allowed";
+                    opacity = "opacity-50";
+                    reason = translations.pastDay;
+                  }
+                } else {
+                  // Будущие дни
+                  bgColor = "bg-gray-100 dark:bg-gray-600";
+                  textColor = "text-gray-400 dark:text-gray-500";
+                  isSelectable = false;
+                  cursorClass = "cursor-not-allowed";
+                  opacity = "opacity-50";
+                  reason = translations.futureDay;
                 }
 
                 return (
                   <button
                     key={hour}
                     onClick={() => {
-                      if (
-                        selectedDate === getToday() &&
-                        hour > getCurrentHour()
-                      ) {
-                        toast.warning(
-                          script === "latin"
-                            ? "Kelajak vaqt uchun hisobot yozib bo'lmaydi"
-                            : "Келажак вақт учун ҳисобот ёзиб бўлмайди",
-                        );
+                      if (!isSelectable) {
+                        if (reason) {
+                          toast.info(reason);
+                        }
                         return;
                       }
                       handleHourSelect(hour);
                     }}
-                    disabled={
-                      selectedDate === getToday() && hour > getCurrentHour()
-                    }
-                    className={`p-1.5 text-xs rounded-lg transition-all duration-200 relative ${bgColor} ${
-                      selectedDate === getToday() && hour > getCurrentHour()
-                        ? "opacity-50 cursor-not-allowed"
-                        : "cursor-pointer"
-                    }`}
+                    disabled={!isSelectable}
+                    className={`p-1.5 text-xs rounded-lg transition-all duration-200 relative border ${borderColor} ${bgColor} ${textColor} ${cursorClass} ${opacity}`}
+                    title={reason || ""}
                   >
                     <span>{formatTime(hour)}</span>
-                    {hasReport && (
+
+                    {/* Индикаторы */}
+                    {indicator === "edit" && (
                       <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"></span>
+                    )}
+                    {indicator === "view" && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-gray-400 rounded-full"></span>
+                    )}
+                    {indicator === "create" && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
                     )}
                     {isActive && (
                       <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
+                    )}
+
+                    {/* Текст "только просмотр" */}
+                    {isViewOnly && (
+                      <span className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 text-[6px] text-gray-400 whitespace-nowrap">
+                        {translations.viewOnly}
+                      </span>
                     )}
                   </button>
                 );
               })}
             </div>
-            <div className="mt-2 flex items-center gap-3 text-xs">
+            <div className="mt-3 flex items-center gap-3 text-xs flex-wrap">
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                 <span className="text-gray-500 dark:text-gray-400">
-                  {script === "latin" ? "Hisobot bor" : "Ҳисобот бор"}
+                  {script === "latin"
+                    ? "Tahrirlash mumkin"
+                    : "Таҳрирлаш мумкин"}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {script === "latin" ? "Yaratish mumkin" : "Яратиш мумкин"}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {script === "latin" ? "Faqat ko'rish" : "Фақат кўриш"}
                 </span>
               </div>
               <div className="flex items-center gap-1">
@@ -732,9 +1000,25 @@ const DataEntry = () => {
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
                 <span className="text-gray-500 dark:text-gray-400">
-                  {script === "latin" ? "Hisobot yo'q" : "Ҳисобот йўқ"}
+                  {script === "latin" ? "Mavjud emas" : "Мавжуд эмас"}
                 </span>
               </div>
+            </div>
+            <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              {script === "latin"
+                ? "* Hisobot vaqtdan 10 daqiqa oldin ochiladi"
+                : "* Ҳисобот вақтдан 10 дақиқа олдин очилади"}
+              {selectedDate === getToday() && (
+                <span className="ml-2 text-yellow-500">
+                  {canCreateToday
+                    ? script === "latin"
+                      ? "✅ Yozish mumkin"
+                      : "✅ Ёзиш мумкин"
+                    : script === "latin"
+                      ? "❌ Yozish vaqti tugagan"
+                      : "❌ Ёзиш вақти тугаган"}
+                </span>
+              )}
             </div>
           </div>
 
@@ -763,6 +1047,12 @@ const DataEntry = () => {
                     <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                       <CheckCircle className="w-3 h-3" />
                       {script === "latin" ? "Saqlangan" : "Сақланган"}
+                    </span>
+                  )}
+                  {isReportSaved && !canEditCurrentReport() && (
+                    <span className="text-xs text-gray-400 flex items-center gap-1">
+                      <Eye className="w-3 h-3" />
+                      {script === "latin" ? "Faqat ko'rish" : "Фақат кўриш"}
                     </span>
                   )}
                 </>
@@ -798,6 +1088,12 @@ const DataEntry = () => {
                 </span>
               ) : (
                 translations.enterData
+              )}
+              {isReportSaved && !canEditCurrentReport() && (
+                <span className="text-xs text-gray-400 ml-2 flex items-center gap-1">
+                  <Eye className="w-3 h-3" />
+                  {script === "latin" ? "(faqat ko'rish)" : "(фақат кўриш)"}
+                </span>
               )}
             </h2>
             <div className="flex flex-wrap items-center gap-2">
@@ -859,7 +1155,10 @@ const DataEntry = () => {
                         {translations.flow}
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
-                        {translations.pressure}
+                        {translations.pressureIn}
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">
+                        {translations.pressureOut}
                       </th>
                     </tr>
                   </thead>
@@ -867,7 +1166,8 @@ const DataEntry = () => {
                     {filteredItems.map((item) => {
                       const fields = getFieldsForCategory(item.category);
                       const itemData = formData[item.category]?.[item.id] || {};
-                      const isDisabled = isReportSaved;
+                      const isDisabled =
+                        isReportSaved && !canEditCurrentReport();
 
                       return (
                         <tr
@@ -916,21 +1216,52 @@ const DataEntry = () => {
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {fields.includes("pressure") ? (
+                            {fields.includes("pressureIn") ? (
                               <input
                                 type="number"
                                 step="0.01"
                                 value={
-                                  itemData.pressure !== undefined &&
-                                  itemData.pressure !== null
-                                    ? itemData.pressure
+                                  itemData.pressureIn !== undefined &&
+                                  itemData.pressureIn !== null
+                                    ? itemData.pressureIn
                                     : ""
                                 }
                                 onChange={(e) =>
                                   handleInputChange(
                                     item.category,
                                     item.id,
-                                    "pressure",
+                                    "pressureIn",
+                                    e.target.value,
+                                  )
+                                }
+                                disabled={isDisabled}
+                                className={`w-28 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                                  isDisabled
+                                    ? "opacity-50 cursor-not-allowed"
+                                    : ""
+                                }`}
+                                placeholder="0.00"
+                              />
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {fields.includes("pressureOut") ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={
+                                  itemData.pressureOut !== undefined &&
+                                  itemData.pressureOut !== null
+                                    ? itemData.pressureOut
+                                    : ""
+                                }
+                                onChange={(e) =>
+                                  handleInputChange(
+                                    item.category,
+                                    item.id,
+                                    "pressureOut",
                                     e.target.value,
                                   )
                                 }
@@ -989,9 +1320,11 @@ const DataEntry = () => {
                             },
                           }));
                         }}
-                        disabled={isReportSaved}
+                        disabled={isReportSaved && !canEditCurrentReport()}
                         className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
-                          isReportSaved ? "opacity-50 cursor-not-allowed" : ""
+                          isReportSaved && !canEditCurrentReport()
+                            ? "opacity-50 cursor-not-allowed"
+                            : ""
                         }`}
                         placeholder="0.00"
                       />
@@ -1022,9 +1355,11 @@ const DataEntry = () => {
                             },
                           }));
                         }}
-                        disabled={isReportSaved}
+                        disabled={isReportSaved && !canEditCurrentReport()}
                         className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
-                          isReportSaved ? "opacity-50 cursor-not-allowed" : ""
+                          isReportSaved && !canEditCurrentReport()
+                            ? "opacity-50 cursor-not-allowed"
+                            : ""
                         }`}
                         placeholder="0.00"
                       />
@@ -1055,9 +1390,11 @@ const DataEntry = () => {
                             },
                           }));
                         }}
-                        disabled={isReportSaved}
+                        disabled={isReportSaved && !canEditCurrentReport()}
                         className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
-                          isReportSaved ? "opacity-50 cursor-not-allowed" : ""
+                          isReportSaved && !canEditCurrentReport()
+                            ? "opacity-50 cursor-not-allowed"
+                            : ""
                         }`}
                         placeholder="0.00"
                       />
@@ -1083,7 +1420,12 @@ const DataEntry = () => {
                 {isReportSaved ? (
                   <button
                     onClick={handleEditClick}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                    disabled={!canEdit}
+                    className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                      canEdit
+                        ? "bg-blue-600 hover:bg-blue-700 text-white"
+                        : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                    }`}
                   >
                     <Edit className="w-4 h-4" />
                     {translations.edit}

@@ -18,10 +18,13 @@ import {
   FiClipboard,
   FiDatabase,
   FiBarChart2,
+  FiEdit,
+  FiUserPlus,
+  FiList,
+  FiTag,
 } from "react-icons/fi";
 import useLanguageStore from "../../store/languageStore";
 import useAuthStore from "../../store/authStore";
-import { FiEdit } from "react-icons/fi";
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { script } = useLanguageStore();
@@ -31,6 +34,7 @@ const Sidebar = ({ isOpen, onClose }) => {
   const [openRegions, setOpenRegions] = useState(false);
   const [openDataPoints, setOpenDataPoints] = useState(false);
   const [openReports, setOpenReports] = useState(false);
+  const [openConsumers, setOpenConsumers] = useState(false);
 
   const userIsAdmin = isAdmin();
   const userIsDilik = isDilik();
@@ -62,13 +66,17 @@ const Sidebar = ({ isOpen, onClose }) => {
     dataEntry: script === "latin" ? "Ma'lumot kiritish" : "Маълумот киритиш",
     viewReports:
       script === "latin" ? "Hisobotlarni ko'rish" : "Ҳисоботларни кўриш",
+    editPermissions: script === "latin" ? "O'zgartirish" : "Ўзгартириш",
     consumers: script === "latin" ? "Iste'molchilar" : "Истеъмолчилар",
     consumersRu: "Потребители",
+    consumersList:
+      script === "latin" ? "Iste'molchilar ro'yxati" : "Истеъмолчилар рўйхати",
+    consumersTypes:
+      script === "latin" ? "Iste'molchilar turi" : "Истеъмолчилар тури",
     users: script === "latin" ? "Foydalanuvchilar" : "Фойдаланувчилар",
     usersRu: "Пользователи",
     logs: script === "latin" ? "Amallar jurnali" : "Амаллар журнали",
     logout: script === "latin" ? "Chiqish" : "Чиқиш",
-    editPermissions: script === "latin" ? "O'zgartirish" : "Ўзгартириш",
   };
 
   const handleLogout = async () => {
@@ -87,6 +95,10 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   const toggleReports = () => {
     setOpenReports(!openReports);
+  };
+
+  const toggleConsumers = () => {
+    setOpenConsumers(!openConsumers);
   };
 
   return (
@@ -370,6 +382,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                   <FiBarChart2 className="w-4 h-4" />
                   <span>{translations.viewReports}</span>
                 </NavLink>
+
                 <NavLink
                   to="/reports/edit-permissions"
                   onClick={onClose}
@@ -388,21 +401,57 @@ const Sidebar = ({ isOpen, onClose }) => {
             )}
           </div>
 
-          {/* Истеъмолчилар / Потребители */}
-          <NavLink
-            to="/consumers"
-            onClick={onClose}
-            className={({ isActive }) =>
-              `flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                isActive
-                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shadow-sm"
-                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-              }`
-            }
-          >
-            <FiUsers className="w-5 h-5" />
-            <span className="font-medium">{translations.consumers}</span>
-          </NavLink>
+          {/* Истеъмолчилар / Потребители - с подменю */}
+          <div>
+            <button
+              onClick={toggleConsumers}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+            >
+              <div className="flex items-center space-x-3">
+                <FiUsers className="w-5 h-5" />
+                <span className="font-medium">{translations.consumers}</span>
+              </div>
+              {openConsumers ? (
+                <FiChevronDown className="w-4 h-4" />
+              ) : (
+                <FiChevronRight className="w-4 h-4" />
+              )}
+            </button>
+
+            {openConsumers && (
+              <div className="ml-4 mt-1 space-y-1 border-l-2 border-gray-200 dark:border-gray-700 pl-3">
+                <NavLink
+                  to="/consumers/list"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-sm ${
+                      isActive
+                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`
+                  }
+                >
+                  <FiList className="w-4 h-4" />
+                  <span>{translations.consumersList}</span>
+                </NavLink>
+
+                <NavLink
+                  to="/consumers/types"
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    `flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all duration-200 text-sm ${
+                      isActive
+                        ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }`
+                  }
+                >
+                  <FiTag className="w-4 h-4" />
+                  <span>{translations.consumersTypes}</span>
+                </NavLink>
+              </div>
+            )}
+          </div>
 
           {/* Фойдаланувчилар / Пользователи - только для админов */}
           {userIsAdmin && (

@@ -48,6 +48,11 @@ export const ActionTypes = {
 
   REPORT_PERMISSION_GRANTED: "report_permission_granted",
   REPORT_EDITED: "report_edited",
+
+  // Добавьте в ActionTypes:
+  CONSUMER_TYPE_CREATE: "consumer_type_create",
+  CONSUMER_TYPE_UPDATE: "consumer_type_update",
+  CONSUMER_TYPE_DELETE: "consumer_type_delete",
 };
 
 // Основная функция логирования

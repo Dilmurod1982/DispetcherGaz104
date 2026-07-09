@@ -28,6 +28,8 @@ import Consumers from "./pages/Consumers/Consumers";
 import DataEntry from "./pages/Reports/DataEntry/DataEntry";
 import ReportView from "./pages/Reports/ReportView/ReportView";
 import EditPermissions from "./pages/Reports/EditPermissions/EditPermissions";
+import ConsumerList from "./pages/Consumers/ConsumerList/ConsumerList";
+import ConsumerTypes from "./pages/Consumers/ConsumerTypes/ConsumerTypes";
 
 // Временные компоненты для пустых страниц
 const EmptyPage = ({ title }) => {
@@ -123,6 +125,8 @@ const App = () => {
           <Route path="/reports/data-entry" element={<DataEntry />} />
           <Route path="/reports/view" element={<ReportView />} />
           <Route path="/reports/view/:date/:hour" element={<ReportView />} />
+          <Route path="/consumers/list" element={<ConsumerList />} />
+          <Route path="/consumers/types" element={<ConsumerTypes />} />
 
           {/* Логи - только для dilik@mail.ru */}
           <Route path="/logs" element={<LogsRoute />} />

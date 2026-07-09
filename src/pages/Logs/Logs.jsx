@@ -84,6 +84,11 @@ const Logs = () => {
     // Добавьте в actionLabels
     report_edited: "Ҳисобот таҳрирланди",
     report_permission_granted: "Ҳисоботни таҳрирлашга рухсат берилди",
+
+    // Добавьте в actionLabels:
+    consumer_type_create: "Тип потребителя создан",
+    consumer_type_update: "Тип потребителя обновлен",
+    consumer_type_delete: "Тип потребителя удален",
   };
 
   // Функция для получения читаемого описания деталей

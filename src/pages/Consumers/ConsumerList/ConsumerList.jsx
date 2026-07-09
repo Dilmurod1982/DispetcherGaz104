@@ -1,0 +1,822 @@
+import React, { useState, useEffect } from "react";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  doc,
+  deleteDoc,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "../../../firebase/config";
+import {
+  Plus,
+  X,
+  Edit,
+  Save,
+  Search,
+  MapPin,
+  Trash2,
+  AlertCircle,
+  CheckCircle,
+  Users,
+  Building,
+  Tag,
+} from "lucide-react";
+import useLanguageStore from "../../../store/languageStore";
+import useAuthStore from "../../../store/authStore";
+import useLogger from "../../../hooks/useLogger";
+import { ActionTypes } from "../../../services/logger";
+import { toast } from "react-toastify";
+
+const ConsumerList = () => {
+  const { script } = useLanguageStore();
+  const { userData } = useAuthStore();
+  const { log } = useLogger();
+  const [consumers, setConsumers] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [cities, setCities] = useState([]);
+  const [filteredCities, setFilteredCities] = useState([]);
+  const [consumerTypes, setConsumerTypes] = useState([]);
+  const [selectedConsumer, setSelectedConsumer] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Проверка, является ли пользователь админом
+  const isAdmin = userData?.role === "admin" || userData?.role === "Админ";
+
+  const translations = {
+    title:
+      script === "latin" ? "Iste'molchilar ro'yxati" : "Истеъмолчилар рўйхати",
+    subtitle:
+      script === "latin"
+        ? "Barcha iste'molchilar ro'yxati"
+        : "Барча истеъмолчилар рўйхати",
+    addConsumer:
+      script === "latin" ? "Iste'molchi qo'shish" : "Истеъмолчи қўшиш",
+    search: script === "latin" ? "Qidirish..." : "Қидириш...",
+    searchPlaceholder:
+      script === "latin"
+        ? "Nomi yoki joylashgan joyi bo'yicha qidirish"
+        : "Номи ёки жойлашган жойи бўйича қидириш",
+    name: script === "latin" ? "Nomi" : "Номи",
+    location: script === "latin" ? "Joylashgan joyi" : "Жойлашган жойи",
+    region: script === "latin" ? "Viloyat" : "Вилоят",
+    city: script === "latin" ? "Tuman/Shahar" : "Туман/Шаҳар",
+    type: script === "latin" ? "Turi" : "Тури",
+    create: script === "latin" ? "Yangi iste'molchi" : "Янги истеъмолчи",
+    edit:
+      script === "latin" ? "Iste'molchi tahrirlash" : "Истеъмолчи таҳрирлаш",
+    view:
+      script === "latin"
+        ? "Iste'molchi ma'lumotlari"
+        : "Истеъмолчи маълумотлари",
+    nameLabel: script === "latin" ? "Iste'molchi nomi" : "Истеъмолчи номи",
+    regionLabel: script === "latin" ? "Viloyat" : "Вилоят",
+    cityLabel: script === "latin" ? "Tuman/Shahar" : "Туман/Шаҳар",
+    typeLabel: script === "latin" ? "Iste'molchi turi" : "Истеъмолчи тури",
+    selectRegion: script === "latin" ? "Viloyatni tanlang" : "Вилоятни танланг",
+    selectCity:
+      script === "latin" ? "Tuman/Shaharni tanlang" : "Туман/Шаҳарни танланг",
+    selectType: script === "latin" ? "Turni tanlang" : "Турни танланг",
+    cancel: script === "latin" ? "Bekor qilish" : "Бекор қилиш",
+    save: script === "latin" ? "Saqlash" : "Сақлаш",
+    saving: script === "latin" ? "Saqlanmoqda..." : "Сақланмоқда...",
+    close: script === "latin" ? "Yopish" : "Ёпиш",
+    editBtn: script === "latin" ? "Tahrirlash" : "Таҳрирлаш",
+    deleteBtn: script === "latin" ? "O'chirish" : "Ўчириш",
+    deleteConfirm:
+      script === "latin" ? "O'chirishni tasdiqlang" : "Ўчиришни тасдиқланг",
+    deleteWarning:
+      script === "latin"
+        ? "Ushbu iste'molchini o'chirishni xohlaysizmi?"
+        : "Ушбу истеъмолчини ўчиришни хоҳлайсизми?",
+    deleteYes: script === "latin" ? "Ha, o'chirish" : "Ҳа, ўчириш",
+    deleteNo: script === "latin" ? "Yo'q" : "Йўқ",
+    required: script === "latin" ? "Majburiy maydon" : "Мажбурий майдон",
+    noData:
+      script === "latin" ? "Iste'molchi topilmadi" : "Истеъмолчи топилмади",
+    noDataFound:
+      script === "latin"
+        ? "Hozircha iste'molchilar mavjud emas"
+        : "Ҳозирча истеъмолчилар мавжуд эмас",
+    startAdding:
+      script === "latin"
+        ? "Birinchi iste'molchi qo'shish"
+        : "Биринчи истеъмолчи қўшиш",
+    notSpecified: script === "latin" ? "Ko'rsatilmagan" : "Кўрсатилмаган",
+    total: script === "latin" ? "Jami" : "Жами",
+    totalCount: script === "latin" ? "ta iste'molchi" : "та истеъмолчи",
+    noPermission:
+      script === "latin"
+        ? "Faqat administratorlar iste'molchi qo'shishi mumkin"
+        : "Фақат администраторлар истеъмолчи қўшиши мумкин",
+    city: script === "latin" ? "shahar" : "шаҳар",
+    district: script === "latin" ? "tuman" : "туман",
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const consumersSnapshot = await getDocs(collection(db, "consumers"));
+      const consumersData = consumersSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setConsumers(consumersData);
+
+      const regionsSnapshot = await getDocs(collection(db, "regions"));
+      const regionsData = regionsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setRegions(regionsData);
+
+      const citiesSnapshot = await getDocs(collection(db, "cities"));
+      const citiesData = citiesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setCities(citiesData);
+
+      const typesSnapshot = await getDocs(collection(db, "consumer_types"));
+      const typesData = typesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setConsumerTypes(typesData);
+    } catch (error) {
+      console.error("Error loading data:", error);
+      toast.error(
+        script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [newConsumer, setNewConsumer] = useState({
+    name: "",
+    regionId: "",
+    regionName: "",
+    cityId: "",
+    cityName: "",
+    typeId: "",
+    typeName: "",
+  });
+
+  // Функция для получения названия города с типом
+  const getCityDisplayName = (city) => {
+    if (!city) return "";
+    const type =
+      city.type === "Город" ? translations.city : translations.district;
+    return `${city.name} ${type}`;
+  };
+
+  const checkFormValidity = () => {
+    const currentData = isCreating ? newConsumer : selectedConsumer;
+    if (!currentData) return false;
+    return (
+      currentData.name?.trim() &&
+      currentData.regionId?.trim() &&
+      currentData.cityId?.trim()
+    );
+  };
+
+  const handleInputChange = (field, value) => {
+    if (isCreating) {
+      setNewConsumer((prev) => ({ ...prev, [field]: value }));
+    } else {
+      setSelectedConsumer((prev) => ({ ...prev, [field]: value }));
+    }
+  };
+
+  const handleRegionChange = (regionId) => {
+    const selectedRegion = regions.find((region) => region.id === regionId);
+    if (selectedRegion) {
+      const filtered = cities.filter((city) => city.regionId === regionId);
+      setFilteredCities(filtered);
+
+      if (isCreating) {
+        setNewConsumer((prev) => ({
+          ...prev,
+          regionId: selectedRegion.id,
+          regionName: selectedRegion.name,
+          cityId: "",
+          cityName: "",
+        }));
+      } else {
+        setSelectedConsumer((prev) => ({
+          ...prev,
+          regionId: selectedRegion.id,
+          regionName: selectedRegion.name,
+          cityId: "",
+          cityName: "",
+        }));
+      }
+    }
+  };
+
+  const handleCityChange = (cityId) => {
+    const selectedCity = cities.find((city) => city.id === cityId);
+    if (selectedCity) {
+      const displayName = getCityDisplayName(selectedCity);
+      if (isCreating) {
+        setNewConsumer((prev) => ({
+          ...prev,
+          cityId: selectedCity.id,
+          cityName: displayName,
+        }));
+      } else {
+        setSelectedConsumer((prev) => ({
+          ...prev,
+          cityId: selectedCity.id,
+          cityName: displayName,
+        }));
+      }
+    }
+  };
+
+  const handleTypeChange = (typeId) => {
+    const selectedType = consumerTypes.find((type) => type.id === typeId);
+    if (selectedType) {
+      if (isCreating) {
+        setNewConsumer((prev) => ({
+          ...prev,
+          typeId: selectedType.id,
+          typeName: selectedType.name,
+        }));
+      } else {
+        setSelectedConsumer((prev) => ({
+          ...prev,
+          typeId: selectedType.id,
+          typeName: selectedType.name,
+        }));
+      }
+    }
+  };
+
+  const handleConsumerClick = (consumer) => {
+    setSelectedConsumer({ ...consumer });
+    setIsModalOpen(true);
+    setIsEditMode(false);
+  };
+
+  const handleCreateConsumer = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
+    setIsCreating(true);
+    setIsModalOpen(true);
+    setNewConsumer({
+      name: "",
+      regionId: "",
+      regionName: "",
+      cityId: "",
+      cityName: "",
+      typeId: "",
+      typeName: "",
+    });
+    setFilteredCities([]);
+    setIsSaving(false);
+    log(ActionTypes.CONSUMER_CREATE, { action: "open_form" });
+  };
+
+  const handleCloseModal = () => {
+    if (isSaving) return;
+    setIsModalOpen(false);
+    setIsEditMode(false);
+    setIsCreating(false);
+    setSelectedConsumer(null);
+    setIsDeleteConfirmOpen(false);
+    setIsSaving(false);
+    setFilteredCities([]);
+  };
+
+  const handleEdit = () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
+    setIsEditMode(true);
+    setIsSaving(false);
+    if (selectedConsumer?.regionId) {
+      const filtered = cities.filter(
+        (city) => city.regionId === selectedConsumer.regionId,
+      );
+      setFilteredCities(filtered);
+    }
+  };
+
+  const handleCancel = () => {
+    if (isSaving) return;
+    if (isCreating) {
+      handleCloseModal();
+    } else {
+      setIsEditMode(false);
+      const originalConsumer = consumers.find(
+        (consumer) => consumer.id === selectedConsumer?.id,
+      );
+      setSelectedConsumer(originalConsumer ? { ...originalConsumer } : null);
+      setFilteredCities([]);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!checkFormValidity()) {
+      toast.warning(translations.required);
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      if (isCreating) {
+        await addDoc(collection(db, "consumers"), {
+          ...newConsumer,
+          createdAt: new Date(),
+        });
+        await log(ActionTypes.CONSUMER_CREATE, {
+          consumerName: newConsumer.name,
+          regionName: newConsumer.regionName,
+          cityName: newConsumer.cityName,
+          typeName: newConsumer.typeName,
+          action: "create",
+        });
+        toast.success(
+          script === "latin" ? "Iste'molchi qo'shildi" : "Истеъмолчи қўшилди",
+        );
+      } else {
+        await updateDoc(doc(db, "consumers", selectedConsumer.id), {
+          ...selectedConsumer,
+          updatedAt: new Date(),
+        });
+        await log(ActionTypes.CONSUMER_UPDATE, {
+          consumerId: selectedConsumer.id,
+          consumerName: selectedConsumer.name,
+          action: "update",
+        });
+        toast.success(
+          script === "latin"
+            ? "Iste'molchi yangilandi"
+            : "Истеъмолчи янгиланди",
+        );
+      }
+      await loadData();
+      handleCloseModal();
+    } catch (error) {
+      console.error("Error saving consumer:", error);
+      toast.error(
+        script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
+      );
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!isAdmin) {
+      toast.warning(translations.noPermission);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const consumerToDelete = selectedConsumer;
+      await deleteDoc(doc(db, "consumers", selectedConsumer.id));
+      await log(ActionTypes.CONSUMER_DELETE, {
+        consumerId: consumerToDelete.id,
+        consumerName: consumerToDelete.name,
+        action: "delete",
+      });
+      toast.success(
+        script === "latin" ? "Iste'molchi o'chirildi" : "Истеъмолчи ўчирилди",
+      );
+      await loadData();
+      handleCloseModal();
+    } catch (error) {
+      console.error("Error deleting consumer:", error);
+      toast.error(
+        script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
+      );
+      setIsSaving(false);
+    }
+  };
+
+  const filteredConsumers = consumers.filter(
+    (consumer) =>
+      consumer.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      consumer.regionName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      consumer.cityName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      consumer.typeName?.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
+  const isFormValid = checkFormValidity();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            {translations.title}
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {translations.subtitle}
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={handleCreateConsumer}
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors duration-200 text-sm font-medium shadow-sm hover:shadow"
+          >
+            <Plus size={18} />
+            {translations.addConsumer}
+          </button>
+        )}
+      </div>
+
+      <div className="mb-6">
+        <div className="relative">
+          <Search
+            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+            size={18}
+          />
+          <input
+            type="text"
+            placeholder={translations.searchPlaceholder}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full sm:w-80 pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
+          />
+        </div>
+      </div>
+
+      <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+        {translations.total}: {filteredConsumers.length}{" "}
+        {translations.totalCount}
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {translations.name}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">
+                  {translations.region}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">
+                  {translations.city}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden xl:table-cell">
+                  {translations.type}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {filteredConsumers.map((consumer) => (
+                <tr
+                  key={consumer.id}
+                  onClick={() => handleConsumerClick(consumer)}
+                  className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-150"
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Users className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      </div>
+                      <span className="font-medium text-gray-900 dark:text-white text-sm">
+                        {consumer.name}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                    {consumer.regionName || translations.notSpecified}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden lg:table-cell">
+                    {consumer.cityName || translations.notSpecified}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden xl:table-cell">
+                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                      {consumer.typeName || translations.notSpecified}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {filteredConsumers.length === 0 && (
+          <div className="text-center py-12">
+            <Users
+              className="mx-auto text-gray-300 dark:text-gray-600 mb-3"
+              size={48}
+            />
+            <h3 className="text-base font-medium text-gray-600 dark:text-gray-400 mb-1">
+              {searchTerm ? translations.noData : translations.noDataFound}
+            </h3>
+            <p className="text-sm text-gray-400 dark:text-gray-500">
+              {searchTerm
+                ? translations.searchPlaceholder
+                : translations.startAdding}
+            </p>
+            {!searchTerm && isAdmin && (
+              <button
+                onClick={handleCreateConsumer}
+                className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+              >
+                {translations.addConsumer}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Модальное окно */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+          onClick={isSaving ? undefined : handleCloseModal}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-lg max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {isCreating
+                  ? translations.create
+                  : isEditMode
+                    ? translations.edit
+                    : translations.view}
+              </h2>
+              <button
+                onClick={handleCloseModal}
+                disabled={isSaving}
+                className={`p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              </button>
+            </div>
+
+            <div className="px-6 py-4 overflow-y-auto max-h-[60vh]">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {translations.nameLabel}{" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={
+                      isCreating
+                        ? newConsumer.name
+                        : selectedConsumer?.name || ""
+                    }
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                    placeholder={translations.nameLabel}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {translations.regionLabel}{" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={
+                      isCreating
+                        ? newConsumer.regionId
+                        : selectedConsumer?.regionId || ""
+                    }
+                    onChange={(e) => handleRegionChange(e.target.value)}
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <option value="">{translations.selectRegion}</option>
+                    {regions.map((region) => (
+                      <option key={region.id} value={region.id}>
+                        {region.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {translations.cityLabel}{" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={
+                      isCreating
+                        ? newConsumer.cityId
+                        : selectedConsumer?.cityId || ""
+                    }
+                    onChange={(e) => handleCityChange(e.target.value)}
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <option value="">{translations.selectCity}</option>
+                    {filteredCities.map((city) => {
+                      const displayName = getCityDisplayName(city);
+                      return (
+                        <option key={city.id} value={city.id}>
+                          {displayName}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    {translations.typeLabel}
+                  </label>
+                  <select
+                    value={
+                      isCreating
+                        ? newConsumer.typeId
+                        : selectedConsumer?.typeId || ""
+                    }
+                    onChange={(e) => handleTypeChange(e.target.value)}
+                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    <option value="">{translations.selectType}</option>
+                    {consumerTypes.map((type) => (
+                      <option key={type.id} value={type.id}>
+                        {type.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {(isCreating || isEditMode) && (
+                  <div
+                    className={`flex items-center gap-2 text-sm ${isFormValid ? "text-green-600 dark:text-green-400" : "text-orange-600 dark:text-orange-400"}`}
+                  >
+                    {isFormValid ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        <span>{translations.required}</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-4 h-4" />
+                        <span>{translations.required}</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+              <div className="flex flex-wrap gap-2 justify-end">
+                {!isCreating && !isEditMode && (
+                  <>
+                    {isAdmin && (
+                      <>
+                        <button
+                          onClick={() => setIsDeleteConfirmOpen(true)}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          {translations.deleteBtn}
+                        </button>
+                        <button
+                          onClick={handleEdit}
+                          disabled={isSaving}
+                          className={`px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Edit className="w-4 h-4" />
+                          {translations.editBtn}
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={handleCloseModal}
+                      disabled={isSaving}
+                      className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      {translations.close}
+                    </button>
+                  </>
+                )}
+
+                {(isCreating || isEditMode) && (
+                  <>
+                    <button
+                      onClick={handleCancel}
+                      disabled={isSaving}
+                      className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      {translations.cancel}
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={!isFormValid || isSaving}
+                      className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${
+                        isFormValid && !isSaving
+                          ? "bg-green-600 hover:bg-green-700 text-white cursor-pointer"
+                          : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                      }`}
+                    >
+                      {isSaving ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          {translations.saving}
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          {translations.save}
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Подтверждение удаления */}
+      {isDeleteConfirmOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]"
+          onClick={() => setIsDeleteConfirmOpen(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg flex-shrink-0">
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {translations.deleteConfirm}
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {translations.deleteWarning}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                disabled={isSaving}
+                className={`px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {translations.deleteNo}
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isSaving}
+                className={`px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block mr-2"></div>
+                    {translations.saving}
+                  </>
+                ) : (
+                  translations.deleteYes
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ConsumerList;

@@ -44,6 +44,11 @@ export const getCurrentHour = () => {
   return new Date().getHours();
 };
 
+// Получить текущую дату и время
+export const getCurrentDateTime = () => {
+  return new Date();
+};
+
 // === Определение типа отчета ===
 
 // Получить тип отчета по часу
@@ -67,11 +72,150 @@ export const getHoursForType = (type) => {
   }
 };
 
+// === Проверка доступности отчетов ===
+
+// Проверка, доступен ли отчет для ввода (за 10 минут до наступления)
+export const isReportAvailable = (date, hour) => {
+  const now = new Date();
+  const reportDateTime = new Date(
+    `${date}T${String(hour).padStart(2, "0")}:00:00`,
+  );
+
+  // Отчет доступен за 10 минут до наступления (05:50 для отчета в 06:00)
+  const availableFrom = new Date(reportDateTime.getTime() - 10 * 60 * 1000);
+
+  // Отчет доступен до окончания времени отчета (можно редактировать в течение 2 часов)
+  const availableUntil = new Date(
+    reportDateTime.getTime() + 2 * 60 * 60 * 1000,
+  );
+
+  return now >= availableFrom && now <= availableUntil;
+};
+
+// Проверка, можно ли редактировать отчет (для уже сохраненных)
+export const canEditReport = (reportDate, reportHour, userRole) => {
+  const now = new Date();
+
+  // Создаем дату отчета
+  const reportDateTime = new Date(
+    `${reportDate}T${String(reportHour).padStart(2, "0")}:00:00`,
+  );
+
+  // Начало периода редактирования - 06:00 дня отчета
+  const startOfEdit = new Date(reportDateTime);
+  startOfEdit.setHours(6, 0, 0, 0);
+
+  // Конец периода редактирования - 06:00 следующего дня
+  const endOfEdit = new Date(reportDateTime);
+  endOfEdit.setDate(endOfEdit.getDate() + 1);
+  endOfEdit.setHours(6, 0, 0, 0);
+
+  // Для районных диспетчеров
+  if (userRole === "ray_disp" || userRole === "Туман/шаҳар диспетчери") {
+    return now >= startOfEdit && now <= endOfEdit;
+  }
+
+  // Для областных диспетчеров - можно редактировать всегда (с разрешения)
+  if (userRole === "vil_disp" || userRole === "Вилоят диспетчери") {
+    return true;
+  }
+
+  // Для администраторов - всегда можно редактировать
+  if (userRole === "admin" || userRole === "Админ") {
+    return true;
+  }
+
+  return false;
+};
+
+// Проверка, можно ли создать отчет для сегодняшнего дня
+export const canCreateReportForToday = (date) => {
+  const now = new Date();
+  const today = getToday();
+
+  if (date !== today) return false;
+
+  // Начало периода создания - 06:00 текущего дня
+  const todayStart = new Date(`${today}T06:00:00`);
+
+  // Конец периода создания - 06:00 следующего дня
+  const tomorrowStart = new Date(`${today}T06:00:00`);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+  // Можно создавать отчеты с 06:00 до 06:00 следующего дня
+  return now >= todayStart && now <= tomorrowStart;
+};
+
+// Проверка, можно ли создать конкретный отчет для сегодняшнего дня
+export const canCreateSpecificReport = (date, hour, userRole) => {
+  const now = new Date();
+  const today = getToday();
+
+  // Только для сегодняшнего дня
+  if (date !== today) return false;
+
+  // Только для районных диспетчеров
+  if (userRole !== "ray_disp" && userRole !== "Туман/шаҳар диспетчери") {
+    return false;
+  }
+
+  // Проверяем период создания (06:00 - 06:00 следующего дня)
+  const todayStart = new Date(`${today}T06:00:00`);
+  const tomorrowStart = new Date(`${today}T06:00:00`);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+  // Если текущее время вне периода 06:00-06:00 - нельзя создавать
+  if (now < todayStart || now > tomorrowStart) {
+    return false;
+  }
+
+  // Проверяем, доступен ли отчет (за 10 минут до наступления или уже прошел)
+  const reportDateTime = new Date(
+    `${date}T${String(hour).padStart(2, "0")}:00:00`,
+  );
+  const availableFrom = new Date(reportDateTime.getTime() - 10 * 60 * 1000);
+
+  // Если час уже прошел (текущее время > время_отчета) - разрешаем создание (пропущенный отчет)
+  if (now > reportDateTime) {
+    return true; // Пропущенный отчет можно создать
+  }
+
+  // Если час еще не наступил - проверяем доступность за 10 минут
+  if (now < availableFrom) {
+    return false; // Еще не время
+  }
+
+  // Все проверки пройдены - можно создавать отчет
+  return true;
+};
+
+// Получить время до которого можно редактировать
+export const getEditDeadline = (reportDate, reportHour) => {
+  const reportDateTime = new Date(
+    `${reportDate}T${String(reportHour).padStart(2, "0")}:00:00`,
+  );
+
+  // Конец периода редактирования - 06:00 следующего дня
+  const endOfEdit = new Date(reportDateTime);
+  endOfEdit.setDate(endOfEdit.getDate() + 1);
+  endOfEdit.setHours(6, 0, 0, 0);
+
+  return endOfEdit;
+};
+
+// Получить время, когда отчет станет доступен
+export const getReportAvailableTime = (date, hour) => {
+  const reportDateTime = new Date(
+    `${date}T${String(hour).padStart(2, "0")}:00:00`,
+  );
+  const availableFrom = new Date(reportDateTime.getTime() - 10 * 60 * 1000);
+  return availableFrom;
+};
+
 // === Проверка времени отчета ===
 
 // Проверить, нужно ли создавать отчет в текущее время
 export const shouldCreateReport = (hour) => {
-  // Проверяем часы: 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22
   return hour % 2 === 0;
 };
 
@@ -81,17 +225,14 @@ export const getNextReportTime = () => {
   let hour = now.getHours();
   let minutes = now.getMinutes();
 
-  // Если время прошло, берем следующий час
   if (minutes > 0) {
     hour += 1;
   }
 
-  // Округляем до ближайшего четного часа
   if (hour % 2 !== 0) {
     hour += 1;
   }
 
-  // Если час > 22, то следующий день
   if (hour > 22) {
     hour = 0;
     now.setDate(now.getDate() + 1);
@@ -106,14 +247,17 @@ export const getNextReportTime = () => {
 // Проверить данные узла
 export const validateNodeData = (data) => {
   const errors = [];
-  if (!data.flow && data.flow !== 0) {
+  if (data.flow === undefined || data.flow === null || data.flow === "") {
     errors.push("Расход не указан");
   }
   if (data.flow < 0) {
     errors.push("Расход не может быть отрицательным");
   }
-  if (data.pressure !== undefined && data.pressure < 0) {
-    errors.push("Давление не может быть отрицательным");
+  if (data.pressureIn !== undefined && data.pressureIn < 0) {
+    errors.push("Входящее давление не может быть отрицательным");
+  }
+  if (data.pressureOut !== undefined && data.pressureOut < 0) {
+    errors.push("Исходящее давление не может быть отрицательным");
   }
   return errors;
 };
@@ -121,7 +265,7 @@ export const validateNodeData = (data) => {
 // Проверить данные потребителя
 export const validateConsumerData = (data) => {
   const errors = [];
-  if (!data.flow && data.flow !== 0) {
+  if (data.flow === undefined || data.flow === null || data.flow === "") {
     errors.push("Расход не указан");
   }
   if (data.flow < 0) {
@@ -133,11 +277,25 @@ export const validateConsumerData = (data) => {
 // Проверить данные ГРП
 export const validateGrpData = (data) => {
   const errors = [];
-  if (!data.pressure && data.pressure !== 0) {
-    errors.push("Давление не указано");
+  if (
+    data.pressureIn === undefined ||
+    data.pressureIn === null ||
+    data.pressureIn === ""
+  ) {
+    errors.push("Входящее давление не указано");
   }
-  if (data.pressure < 0) {
-    errors.push("Давление не может быть отрицательным");
+  if (data.pressureIn < 0) {
+    errors.push("Входящее давление не может быть отрицательным");
+  }
+  if (
+    data.pressureOut === undefined ||
+    data.pressureOut === null ||
+    data.pressureOut === ""
+  ) {
+    errors.push("Исходящее давление не указано");
+  }
+  if (data.pressureOut < 0) {
+    errors.push("Исходящее давление не может быть отрицательным");
   }
   return errors;
 };
@@ -191,13 +349,26 @@ export const calculateTotalFlow = (items) => {
   return total;
 };
 
-// Подсчитать среднее давление
-export const calculateAveragePressure = (items) => {
+// Подсчитать среднее давление (входящее)
+export const calculateAveragePressureIn = (items) => {
   let total = 0;
   let count = 0;
   Object.values(items).forEach((item) => {
-    if (item.pressure !== undefined && item.pressure !== null) {
-      total += parseFloat(item.pressure) || 0;
+    if (item.pressureIn !== undefined && item.pressureIn !== null) {
+      total += parseFloat(item.pressureIn) || 0;
+      count++;
+    }
+  });
+  return count > 0 ? total / count : 0;
+};
+
+// Подсчитать среднее давление (исходящее)
+export const calculateAveragePressureOut = (items) => {
+  let total = 0;
+  let count = 0;
+  Object.values(items).forEach((item) => {
+    if (item.pressureOut !== undefined && item.pressureOut !== null) {
+      total += parseFloat(item.pressureOut) || 0;
       count++;
     }
   });
