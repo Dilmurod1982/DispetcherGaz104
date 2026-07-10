@@ -81,10 +81,7 @@ export const isReportAvailable = (date, hour) => {
     `${date}T${String(hour).padStart(2, "0")}:00:00`,
   );
 
-  // Отчет доступен за 10 минут до наступления (05:50 для отчета в 06:00)
   const availableFrom = new Date(reportDateTime.getTime() - 10 * 60 * 1000);
-
-  // Отчет доступен до окончания времени отчета (можно редактировать в течение 2 часов)
   const availableUntil = new Date(
     reportDateTime.getTime() + 2 * 60 * 60 * 1000,
   );
@@ -95,12 +92,47 @@ export const isReportAvailable = (date, hour) => {
 // Проверка, можно ли редактировать отчет (для уже сохраненных)
 export const canEditReport = (reportDate, reportHour, userRole) => {
   const now = new Date();
+  const today = getToday();
 
   // Создаем дату отчета
   const reportDateTime = new Date(
     `${reportDate}T${String(reportHour).padStart(2, "0")}:00:00`,
   );
 
+  // === СПЕЦИАЛЬНАЯ ЛОГИКА ДЛЯ СУТОЧНОГО ОТЧЕТА (00:00) ===
+  if (reportHour === 0) {
+    // Суточный отчет за предыдущий день (00:00 текущего дня)
+    // Например: отчет 00:00 10.07.2026 - это отчет за 09.07.2026
+
+    // Начало периода редактирования - 06:00 предыдущего дня
+    const startOfEdit = new Date(reportDateTime);
+    startOfEdit.setHours(6, 0, 0, 0);
+    // Для 00:00 10.07.2026 -> startOfEdit = 06:00 09.07.2026
+
+    // Конец периода редактирования - 06:00 текущего дня
+    const endOfEdit = new Date(reportDateTime);
+    endOfEdit.setHours(6, 0, 0, 0);
+    // Для 00:00 10.07.2026 -> endOfEdit = 06:00 10.07.2026
+
+    // Для районных диспетчеров
+    if (userRole === "ray_disp" || userRole === "Туман/шаҳар диспетчери") {
+      return now >= startOfEdit && now <= endOfEdit;
+    }
+
+    // Для областных диспетчеров и администраторов
+    if (
+      userRole === "vil_disp" ||
+      userRole === "Вилоят диспетчери" ||
+      userRole === "admin" ||
+      userRole === "Админ"
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // === ЛОГИКА ДЛЯ ОСТАЛЬНЫХ ОТЧЕТОВ (02:00, 04:00, 06:00, ...) ===
   // Начало периода редактирования - 06:00 дня отчета
   const startOfEdit = new Date(reportDateTime);
   startOfEdit.setHours(6, 0, 0, 0);
@@ -115,13 +147,13 @@ export const canEditReport = (reportDate, reportHour, userRole) => {
     return now >= startOfEdit && now <= endOfEdit;
   }
 
-  // Для областных диспетчеров - можно редактировать всегда (с разрешения)
-  if (userRole === "vil_disp" || userRole === "Вилоят диспетчери") {
-    return true;
-  }
-
-  // Для администраторов - всегда можно редактировать
-  if (userRole === "admin" || userRole === "Админ") {
+  // Для областных диспетчеров и администраторов
+  if (
+    userRole === "vil_disp" ||
+    userRole === "Вилоят диспетчери" ||
+    userRole === "admin" ||
+    userRole === "Админ"
+  ) {
     return true;
   }
 
@@ -135,14 +167,10 @@ export const canCreateReportForToday = (date) => {
 
   if (date !== today) return false;
 
-  // Начало периода создания - 06:00 текущего дня
   const todayStart = new Date(`${today}T06:00:00`);
-
-  // Конец периода создания - 06:00 следующего дня
   const tomorrowStart = new Date(`${today}T06:00:00`);
   tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
-  // Можно создавать отчеты с 06:00 до 06:00 следующего дня
   return now >= todayStart && now <= tomorrowStart;
 };
 
@@ -159,12 +187,37 @@ export const canCreateSpecificReport = (date, hour, userRole) => {
     return false;
   }
 
+  // === СПЕЦИАЛЬНАЯ ЛОГИКА ДЛЯ СУТОЧНОГО ОТЧЕТА (00:00) ===
+  if (hour === 0) {
+    // Суточный отчет создается в 00:00, но доступен для создания только до 06:00
+    const reportDateTime = new Date(`${date}T00:00:00`);
+    const startOfEdit = new Date(reportDateTime);
+    startOfEdit.setHours(6, 0, 0, 0); // 06:00 предыдущего дня (для 00:00 текущего дня)
+    startOfEdit.setDate(startOfEdit.getDate() - 1); // Отнимаем 1 день
+
+    const endOfEdit = new Date(reportDateTime);
+    endOfEdit.setHours(6, 0, 0, 0); // 06:00 текущего дня
+
+    // Проверяем, находится ли текущее время в периоде создания
+    if (now < startOfEdit || now > endOfEdit) {
+      return false;
+    }
+
+    // Проверяем, доступен ли отчет за 10 минут до наступления
+    const availableFrom = new Date(reportDateTime.getTime() - 10 * 60 * 1000);
+    if (now < availableFrom) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // === ЛОГИКА ДЛЯ ОСТАЛЬНЫХ ОТЧЕТОВ ===
   // Проверяем период создания (06:00 - 06:00 следующего дня)
   const todayStart = new Date(`${today}T06:00:00`);
   const tomorrowStart = new Date(`${today}T06:00:00`);
   tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
-  // Если текущее время вне периода 06:00-06:00 - нельзя создавать
   if (now < todayStart || now > tomorrowStart) {
     return false;
   }
@@ -177,15 +230,14 @@ export const canCreateSpecificReport = (date, hour, userRole) => {
 
   // Если час уже прошел (текущее время > время_отчета) - разрешаем создание (пропущенный отчет)
   if (now > reportDateTime) {
-    return true; // Пропущенный отчет можно создать
+    return true;
   }
 
   // Если час еще не наступил - проверяем доступность за 10 минут
   if (now < availableFrom) {
-    return false; // Еще не время
+    return false;
   }
 
-  // Все проверки пройдены - можно создавать отчет
   return true;
 };
 
@@ -195,12 +247,18 @@ export const getEditDeadline = (reportDate, reportHour) => {
     `${reportDate}T${String(reportHour).padStart(2, "0")}:00:00`,
   );
 
-  // Конец периода редактирования - 06:00 следующего дня
-  const endOfEdit = new Date(reportDateTime);
-  endOfEdit.setDate(endOfEdit.getDate() + 1);
-  endOfEdit.setHours(6, 0, 0, 0);
+  if (reportHour === 0) {
+    // Для суточного отчета - до 06:00 текущего дня
+    const deadline = new Date(reportDateTime);
+    deadline.setHours(6, 0, 0, 0);
+    return deadline;
+  }
 
-  return endOfEdit;
+  // Для остальных отчетов - до 06:00 следующего дня
+  const deadline = new Date(reportDateTime);
+  deadline.setDate(deadline.getDate() + 1);
+  deadline.setHours(6, 0, 0, 0);
+  return deadline;
 };
 
 // Получить время, когда отчет станет доступен

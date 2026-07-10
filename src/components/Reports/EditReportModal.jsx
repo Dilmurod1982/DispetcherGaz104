@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Save, AlertCircle, Clock, Calendar } from "lucide-react";
+import { X, Save, Calendar, Clock } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
 import useLogger from "../../hooks/useLogger";
 import { ActionTypes } from "../../services/logger";
@@ -265,7 +265,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                                   e.target.value,
                                 )
                               }
-                              className="w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                              className="w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder="0"
                             />
                           ) : (
@@ -291,7 +291,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                                   e.target.value,
                                 )
                               }
-                              className="w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                              className="w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder="0"
                             />
                           ) : (
@@ -317,7 +317,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                                   e.target.value,
                                 )
                               }
-                              className="w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                              className="w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                               placeholder="0"
                             />
                           ) : (
@@ -375,7 +375,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                               e.target.value,
                             )
                           }
-                          className="w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                          className="w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           placeholder="0"
                         />
                       ) : (
@@ -404,7 +404,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                               e.target.value,
                             )
                           }
-                          className="w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                          className="w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           placeholder="0"
                         />
                       ) : (
@@ -433,7 +433,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                               e.target.value,
                             )
                           }
-                          className="w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
+                          className="w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           placeholder="0"
                         />
                       ) : (
@@ -469,7 +469,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                     onChange={(e) =>
                       handleTotalsChange("totalPopulation", e.target.value)
                     }
-                    className="w-full px-1 sm:px-2 py-1 sm:py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                    className="w-full px-1 sm:px-2 py-1 sm:py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="0"
                   />
                 </div>
@@ -489,7 +489,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                     onChange={(e) =>
                       handleTotalsChange("totalWholesale", e.target.value)
                     }
-                    className="w-full px-1 sm:px-2 py-1 sm:py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                    className="w-full px-1 sm:px-2 py-1 sm:py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="0"
                   />
                 </div>
@@ -509,7 +509,7 @@ const EditReportModal = ({ isOpen, onClose, reportData, onSave, loading }) => {
                     onChange={(e) =>
                       handleTotalsChange("losses", e.target.value)
                     }
-                    className="w-full px-1 sm:px-2 py-1 sm:py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors"
+                    className="w-full px-1 sm:px-2 py-1 sm:py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="0"
                   />
                 </div>

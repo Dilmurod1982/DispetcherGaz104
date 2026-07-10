@@ -1,10 +1,4 @@
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-  useNavigate,
-} from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useEffect } from "react";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -17,21 +11,19 @@ import Grs from "./pages/Grs/Grs";
 import Nodes from "./pages/Nodes/Nodes";
 import Interdistrict from "./pages/Interdistrict/Interdistrict";
 import Grp from "./pages/Grp/Grp";
+import ConsumersList from "./pages/Consumers/ConsumerList/ConsumerList";
+import ConsumerTypes from "./pages/Consumers/ConsumerTypes/ConsumerTypes";
 import Users from "./pages/Users/Users";
 import Logs from "./pages/Logs/Logs";
+import DataEntry from "./pages/Reports/DataEntry/DataEntry";
+import ReportView from "./pages/Reports/ReportView/ReportView";
+import EditPermissions from "./pages/Reports/EditPermissions/EditPermissions";
 import MainLayout from "./components/Layout/MainLayout";
 import ProtectedRoute from "./components/Layout/ProtectedRoute";
 import useThemeStore from "./store/themeStore";
 import useAuthStore from "./store/authStore";
 import useLanguageStore from "./store/languageStore";
-import Consumers from "./pages/Consumers/Consumers";
-import DataEntry from "./pages/Reports/DataEntry/DataEntry";
-import ReportView from "./pages/Reports/ReportView/ReportView";
-import EditPermissions from "./pages/Reports/EditPermissions/EditPermissions";
-import ConsumerList from "./pages/Consumers/ConsumerList/ConsumerList";
-import ConsumerTypes from "./pages/Consumers/ConsumerTypes/ConsumerTypes";
 
-// Временные компоненты для пустых страниц
 const EmptyPage = ({ title }) => {
   const { script } = useLanguageStore();
   return (
@@ -49,22 +41,8 @@ const EmptyPage = ({ title }) => {
   );
 };
 
-// Компонент для защиты маршрута /logs
-const LogsRoute = () => {
-  const { isDilik } = useAuthStore();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!isDilik()) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [isDilik, navigate]);
-
-  return isDilik() ? <Logs /> : null;
-};
-
 const App = () => {
-  const { isDark } = useThemeStore();
+  const { isDark, setTheme } = useThemeStore();
   const { initAuth } = useAuthStore();
 
   useEffect(() => {
@@ -74,13 +52,27 @@ const App = () => {
     };
   }, [initAuth]);
 
+  // Инициализация темы при загрузке
   useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
+    // Читаем из localStorage напрямую
+    const saved = localStorage.getItem("theme-storage");
+    let isDarkMode = false;
+
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.state && parsed.state.isDark !== undefined) {
+          isDarkMode = parsed.state.isDark;
+        }
+      } catch (e) {
+        console.error("Error parsing theme:", e);
+      }
     }
-  }, [isDark]);
+
+    // Применяем тему
+    setTheme(isDarkMode);
+    console.log("Тема инициализирована:", isDarkMode ? "dark" : "light");
+  }, [setTheme]);
 
   return (
     <BrowserRouter>
@@ -113,27 +105,23 @@ const App = () => {
           <Route path="/data-points/grp" element={<Grp />} />
 
           {/* Отчеты */}
-          <Route
-            path="/reports"
-            element={<EmptyPage title="Ҳисоботлар / Отчеты" />}
-          />
-
-          {/* Пользователи */}
-          <Route path="/users" element={<Users />} />
-
-          <Route path="/consumers" element={<Consumers />} />
           <Route path="/reports/data-entry" element={<DataEntry />} />
           <Route path="/reports/view" element={<ReportView />} />
           <Route path="/reports/view/:date/:hour" element={<ReportView />} />
-          <Route path="/consumers/list" element={<ConsumerList />} />
-          <Route path="/consumers/types" element={<ConsumerTypes />} />
-
-          {/* Логи - только для dilik@mail.ru */}
-          <Route path="/logs" element={<LogsRoute />} />
           <Route
             path="/reports/edit-permissions"
             element={<EditPermissions />}
           />
+
+          {/* Потребители */}
+          <Route path="/consumers/list" element={<ConsumersList />} />
+          <Route path="/consumers/types" element={<ConsumerTypes />} />
+
+          {/* Пользователи */}
+          <Route path="/users" element={<Users />} />
+
+          {/* Логи */}
+          <Route path="/logs" element={<Logs />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

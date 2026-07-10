@@ -14,7 +14,6 @@ import {
   Trash2,
   Loader2,
   Search,
-  ArrowRight,
 } from "lucide-react";
 import useLanguageStore from "../../../store/languageStore";
 import useAuthStore from "../../../store/authStore";
@@ -51,7 +50,6 @@ const ConfirmModal = ({
 }) => {
   if (!isOpen) return null;
 
-  // Получаем все элементы для отображения с правильными названиями
   const getAllItems = () => {
     const items = [];
     const categories = [
@@ -66,7 +64,6 @@ const ConfirmModal = ({
       const categoryData = data[cat.key] || {};
       Object.keys(categoryData).forEach((id) => {
         const item = categoryData[id];
-        // Ищем объект в assignedObjects для получения правильного названия
         const objectData = assignedObjects[cat.key]?.find(
           (obj) => obj.id === id,
         );
@@ -102,7 +99,6 @@ const ConfirmModal = ({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-2 sm:p-4 z-[100]">
       <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden">
-        {/* Заголовок */}
         <div className="flex items-center justify-between px-3 sm:px-6 py-2 sm:py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
           <h2 className="text-sm sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500" />
@@ -117,9 +113,7 @@ const ConfirmModal = ({
           </button>
         </div>
 
-        {/* Содержимое */}
         <div className="p-2 sm:p-6 overflow-y-auto max-h-[calc(95vh-140px)]">
-          {/* Десктопная таблица */}
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
@@ -175,7 +169,6 @@ const ConfirmModal = ({
             </table>
           </div>
 
-          {/* Мобильные карточки */}
           <div className="sm:hidden space-y-3">
             {items.map((item, index) => (
               <div
@@ -230,7 +223,6 @@ const ConfirmModal = ({
             ))}
           </div>
 
-          {/* Суточные итоги */}
           {hasTotals && (
             <div className="mt-4 p-3 sm:p-4 border border-purple-200 dark:border-purple-800 rounded-lg bg-purple-50 dark:bg-purple-900/20">
               <h4 className="text-xs sm:text-sm font-medium text-purple-800 dark:text-purple-300 mb-2">
@@ -278,7 +270,6 @@ const ConfirmModal = ({
           )}
         </div>
 
-        {/* Кнопки */}
         <div className="flex flex-wrap gap-2 sm:gap-3 justify-end px-3 sm:px-6 py-2 sm:py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
           <button
             onClick={onClose}
@@ -448,7 +439,6 @@ const DataEntry = () => {
     dailyTotals: script === "latin" ? "Kunlik jami" : "Кунлик жами",
   };
 
-  // Загрузка прикрепленных объектов
   const loadAssignedObjects = async () => {
     setLoadingObjects(true);
     try {
@@ -704,7 +694,6 @@ const DataEntry = () => {
     }));
   };
 
-  // Получение полей для категории
   const getFieldsForCategory = (category) => {
     const fields = {
       grs: ["flow", "pressureIn", "pressureOut"],
@@ -716,7 +705,6 @@ const DataEntry = () => {
     return fields[category] || [];
   };
 
-  // Получение всех объектов в едином массиве для таблицы
   const getAllItems = () => {
     const items = [];
 
@@ -755,7 +743,7 @@ const DataEntry = () => {
     return items;
   };
 
-  // Проверка, все ли поля заполнены
+  // Проверка, все ли поля заполнены (0 считается валидным значением)
   const hasAllFieldsFilled = () => {
     const allItems = getAllItems();
     if (allItems.length === 0) return false;
@@ -776,6 +764,7 @@ const DataEntry = () => {
     return allFilled;
   };
 
+  // Проверка, можно ли редактировать
   const canEditCurrentReport = () => {
     if (!existingReport) return false;
     return canEditReport(
@@ -784,6 +773,10 @@ const DataEntry = () => {
       userData?.role,
     );
   };
+
+  // Проверка, можно ли создавать отчеты для сегодняшнего дня
+  const canCreateToday =
+    selectedDate === getToday() && canCreateReportForToday(selectedDate);
 
   // Открытие модального окна подтверждения
   const openConfirmModal = () => {
@@ -1063,9 +1056,10 @@ const DataEntry = () => {
   // Проверка, можно ли редактировать
   const canEdit = isReportSaved ? canEditCurrentReport() : true;
 
-  // Проверка, можно ли создавать отчеты для сегодняшнего дня
-  const canCreateToday =
-    selectedDate === getToday() && canCreateReportForToday(selectedDate);
+  // Поля ввода неактивны, если отчет уже сохранен
+  // Это гарантирует, что при просмотре сохраненного отчета поля будут только для чтения
+  // Редактирование доступно только через модальное окно (кнопка "Tahrirlash")
+  const isDisabled = isReportSaved;
 
   return (
     <div className="p-2 sm:p-4 max-w-full mx-auto">
@@ -1079,7 +1073,7 @@ const DataEntry = () => {
         </p>
       </div>
 
-      {/* Выбор даты и времени - увеличенные элементы */}
+      {/* Выбор даты и времени */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:p-4 mb-3 sm:mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div>
@@ -1264,7 +1258,7 @@ const DataEntry = () => {
                 </span>
               </div>
             </div>
-            <div className="mt-1 sm:mt-1 text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">
+            <div className="mt-0.5 sm:mt-1 text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">
               {script === "latin"
                 ? "* Hisobot vaqtdan 10 daqiqa oldin ochiladi"
                 : "* Ҳисобот вақтдан 10 дақиқа олдин очилади"}
@@ -1330,7 +1324,7 @@ const DataEntry = () => {
         </div>
       </div>
 
-      {/* Форма ввода данных - как в модальном окне подтверждения */}
+      {/* Форма ввода данных */}
       {selectedHour !== null && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-2 sm:p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
@@ -1345,6 +1339,14 @@ const DataEntry = () => {
                         ? "Hisobot saqlangan"
                         : "Ҳисобот сақланган"}
                     </span>
+                    {!canEditCurrentReport() && (
+                      <span className="text-[10px] sm:text-xs text-gray-400 flex items-center gap-0.5 sm:gap-1">
+                        <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                        {script === "latin"
+                          ? "(faqat ko'rish)"
+                          : "(фақат кўриш)"}
+                      </span>
+                    )}
                   </span>
                 ) : isEditing ? (
                   <span className="flex items-center gap-1 sm:gap-2">
@@ -1358,14 +1360,6 @@ const DataEntry = () => {
                 ) : (
                   <span className="text-xs sm:text-base">
                     {translations.enterData}
-                  </span>
-                )}
-                {isReportSaved && !canEditCurrentReport() && (
-                  <span className="text-[10px] sm:text-xs text-gray-400 flex items-center gap-0.5 sm:gap-1">
-                    <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="hidden xs:inline">
-                      {script === "latin" ? "(faqat ko'rish)" : "(фақат кўриш)"}
-                    </span>
                   </span>
                 )}
               </h2>
@@ -1446,8 +1440,8 @@ const DataEntry = () => {
                     {filteredItems.map((item) => {
                       const fields = getFieldsForCategory(item.category);
                       const itemData = formData[item.category]?.[item.id] || {};
-                      const isDisabled =
-                        isReportSaved && !canEditCurrentReport();
+                      // Поля неактивны, если отчет сохранен
+                      const isFieldDisabled = isDisabled;
 
                       return (
                         <tr
@@ -1483,9 +1477,9 @@ const DataEntry = () => {
                                     e.target.value,
                                   )
                                 }
-                                disabled={isDisabled}
-                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                  isDisabled
+                                disabled={isFieldDisabled}
+                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                  isFieldDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
                                 }`}
@@ -1514,9 +1508,9 @@ const DataEntry = () => {
                                     e.target.value,
                                   )
                                 }
-                                disabled={isDisabled}
-                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                  isDisabled
+                                disabled={isFieldDisabled}
+                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                  isFieldDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
                                 }`}
@@ -1545,9 +1539,9 @@ const DataEntry = () => {
                                     e.target.value,
                                   )
                                 }
-                                disabled={isDisabled}
-                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                  isDisabled
+                                disabled={isFieldDisabled}
+                                className={`w-24 px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                  isFieldDisabled
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
                                 }`}
@@ -1564,12 +1558,12 @@ const DataEntry = () => {
                 </table>
               </div>
 
-              {/* Мобильные карточки - как в модальном окне подтверждения */}
+              {/* Мобильные карточки */}
               <div className="sm:hidden space-y-3 p-2">
                 {filteredItems.map((item, index) => {
                   const fields = getFieldsForCategory(item.category);
                   const itemData = formData[item.category]?.[item.id] || {};
-                  const isDisabled = isReportSaved && !canEditCurrentReport();
+                  const isFieldDisabled = isDisabled;
 
                   return (
                     <div
@@ -1610,9 +1604,9 @@ const DataEntry = () => {
                                   e.target.value,
                                 )
                               }
-                              disabled={isDisabled}
-                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                isDisabled
+                              disabled={isFieldDisabled}
+                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                isFieldDisabled
                                   ? "opacity-50 cursor-not-allowed"
                                   : ""
                               }`}
@@ -1644,9 +1638,9 @@ const DataEntry = () => {
                                   e.target.value,
                                 )
                               }
-                              disabled={isDisabled}
-                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                isDisabled
+                              disabled={isFieldDisabled}
+                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                isFieldDisabled
                                   ? "opacity-50 cursor-not-allowed"
                                   : ""
                               }`}
@@ -1678,9 +1672,9 @@ const DataEntry = () => {
                                   e.target.value,
                                 )
                               }
-                              disabled={isDisabled}
-                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                                isDisabled
+                              disabled={isFieldDisabled}
+                              className={`w-full px-1 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                                isFieldDisabled
                                   ? "opacity-50 cursor-not-allowed"
                                   : ""
                               }`}
@@ -1696,7 +1690,7 @@ const DataEntry = () => {
                 })}
               </div>
 
-              {/* Суточный отчет - дополнительные поля */}
+              {/* Суточный отчет */}
               {isDailyReport && (
                 <div className="p-3 sm:p-4 border-t border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
                   <h3 className="text-sm sm:text-sm font-medium text-purple-800 dark:text-purple-300 mb-2 sm:mb-3 flex items-center gap-1 sm:gap-2">
@@ -1732,11 +1726,9 @@ const DataEntry = () => {
                             },
                           }));
                         }}
-                        disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
-                          isReportSaved && !canEditCurrentReport()
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
+                        disabled={isDisabled}
+                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                          isDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                         placeholder="0"
                       />
@@ -1767,11 +1759,9 @@ const DataEntry = () => {
                             },
                           }));
                         }}
-                        disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
-                          isReportSaved && !canEditCurrentReport()
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
+                        disabled={isDisabled}
+                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                          isDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                         placeholder="0"
                       />
@@ -1802,11 +1792,9 @@ const DataEntry = () => {
                             },
                           }));
                         }}
-                        disabled={isReportSaved && !canEditCurrentReport()}
-                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors ${
-                          isReportSaved && !canEditCurrentReport()
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
+                        disabled={isDisabled}
+                        className={`w-full px-2 sm:px-3 py-2 sm:py-2 text-sm sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                          isDisabled ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                         placeholder="0"
                       />
@@ -1834,9 +1822,9 @@ const DataEntry = () => {
                 {isReportSaved ? (
                   <button
                     onClick={handleEditClick}
-                    disabled={!canEdit}
+                    disabled={!canEditCurrentReport()}
                     className={`px-3 py-1.5 sm:px-4 sm:py-2 text-sm sm:text-sm rounded-lg transition-colors flex items-center gap-1 sm:gap-2 ${
-                      canEdit
+                      canEditCurrentReport()
                         ? "bg-blue-600 hover:bg-blue-700 text-white"
                         : "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
                     }`}

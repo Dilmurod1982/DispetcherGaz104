@@ -1,17 +1,8 @@
-import { useEffect } from "react";
 import { FiSun, FiMoon } from "react-icons/fi";
 import useThemeStore from "../../store/themeStore";
 
 const ThemeToggle = () => {
   const { isDark, toggleTheme } = useThemeStore();
-
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [isDark]);
 
   return (
     <button
@@ -22,7 +13,7 @@ const ThemeToggle = () => {
       {isDark ? (
         <FiSun className="text-yellow-400 text-xl" />
       ) : (
-        <FiMoon className="text-gray-700 text-xl" />
+        <FiMoon className="text-gray-700 dark:text-gray-300 text-xl" />
       )}
     </button>
   );
