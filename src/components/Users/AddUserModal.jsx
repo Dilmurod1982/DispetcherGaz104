@@ -22,7 +22,7 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
     address: "",
     role: "operator",
     accessEndDate: "",
-    assignedCities: [], // Новое поле для прикрепленных районов/городов
+    assignedCities: [],
   });
   const [loading, setLoading] = useState(false);
   const [uniqueErrors, setUniqueErrors] = useState({
@@ -33,10 +33,6 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
   const [cities, setCities] = useState([]);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
-  // Сохраняем текущего пользователя до создания нового
-  const [currentUser, setCurrentUser] = useState(null);
-
-  // Роли, для которых показываем выбор районов
   const rolesWithCities = ["ray_disp", "tuman_bosh", "tuman_metrolog", "guest"];
 
   const translations = {
@@ -73,7 +69,6 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
     loadingCities: "Загрузка районов/городов...",
   };
 
-  // Загрузка городов при открытии модалки
   useEffect(() => {
     loadCities();
   }, []);
@@ -93,6 +88,20 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
     } finally {
       setCitiesLoading(false);
     }
+  };
+
+  // Функция для получения отображаемого названия города с типом (без скобок)
+  const getCityDisplayName = (city) => {
+    if (!city) return "";
+    let typeName = "";
+    if (city.type === "shahar" || city.type === "Город") {
+      typeName = "shahar";
+    } else if (city.type === "tuman" || city.type === "Район") {
+      typeName = "tuman";
+    } else {
+      typeName = city.type || "";
+    }
+    return `${city.name} ${typeName}`.trim();
   };
 
   const validatePassword = useCallback((password) => {
@@ -179,7 +188,6 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
       role: formData.role.trim() !== "",
     };
 
-    // Если роль требует выбора районов, проверяем что выбрано хотя бы одно
     if (rolesWithCities.includes(formData.role)) {
       requiredFields.assignedCities = formData.assignedCities.length > 0;
     }
@@ -228,7 +236,6 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
     }
   };
 
-  // Обработка выбора района/города
   const handleCityToggle = (cityId) => {
     setFormData((prev) => {
       const currentCities = prev.assignedCities || [];
@@ -246,7 +253,6 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
     });
   };
 
-  // Выбрать все районы
   const handleSelectAll = () => {
     const allCityIds = cities.map((city) => city.id);
     setFormData((prev) => ({
@@ -255,7 +261,6 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
     }));
   };
 
-  // Снять все районы
   const handleDeselectAll = () => {
     setFormData((prev) => ({
       ...prev,
@@ -274,7 +279,6 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
     setLoading(true);
 
     try {
-      // 1. Сохраняем текущего пользователя
       const currentUser = auth.currentUser;
       const currentUserEmail = currentUser?.email;
       const currentUserPassword = prompt(
@@ -287,20 +291,17 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
         return;
       }
 
-      // 2. Создаем нового пользователя
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         formData.email,
         formData.password,
       );
 
-      // 3. Сохраняем данные пользователя в Firestore
       const userData = {
         ...formData,
         uid: userCredential.user.uid,
         createdAt: new Date(),
         isActive: true,
-        // Сохраняем названия городов для отображения
         assignedCitiesNames: formData.assignedCities.map(
           (cityId) => cities.find((c) => c.id === cityId)?.name || cityId,
         ),
@@ -308,10 +309,7 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
 
       await addDoc(collection(db, "users"), userData);
 
-      // 4. Выходим из нового пользователя
       await auth.signOut();
-
-      // 5. Входим обратно под старым пользователем
       await signInWithEmailAndPassword(
         auth,
         currentUserEmail,
@@ -369,7 +367,6 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
     }
   };
 
-  // Проверяем, нужно ли показывать выбор районов
   const showCitySelection = rolesWithCities.includes(formData.role);
 
   return (
@@ -390,7 +387,7 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
         <form onSubmit={handleSubmit}>
           <div className="p-6 overflow-y-auto max-h-[60vh]">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Email */}
+              {/* Email - остальные поля без изменений */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   {translations.email}
@@ -723,7 +720,7 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
                 </select>
               </div>
 
-              {/* Прикрепленные районы/города - показываем только для определенных ролей */}
+              {/* Прикрепленные районы/города */}
               {showCitySelection && (
                 <div className="md:col-span-2 space-y-2">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -762,8 +759,7 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
                         const isChecked = formData.assignedCities.includes(
                           city.id,
                         );
-                        const cityType =
-                          city.type === "Город" ? "шаҳар" : "туман";
+                        const displayName = getCityDisplayName(city);
                         return (
                           <label
                             key={city.id}
@@ -780,7 +776,7 @@ const AddUserModal = ({ onClose, onUserCreated }) => {
                               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                             />
                             <span className="text-sm text-gray-700 dark:text-gray-300">
-                              {city.name} ({cityType})
+                              {displayName}
                             </span>
                           </label>
                         );

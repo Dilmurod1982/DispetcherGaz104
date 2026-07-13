@@ -8,6 +8,7 @@ import {
   deleteDoc,
   query,
   where,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../../../firebase/config";
 import {
@@ -23,6 +24,7 @@ import {
   Users,
   Building,
   Tag,
+  Hash,
 } from "lucide-react";
 import useLanguageStore from "../../../store/languageStore";
 import useAuthStore from "../../../store/authStore";
@@ -66,6 +68,7 @@ const ConsumerList = () => {
         ? "Nomi yoki joylashgan joyi bo'yicha qidirish"
         : "Номи ёки жойлашган жойи бўйича қидириш",
     name: script === "latin" ? "Nomi" : "Номи",
+    number: script === "latin" ? "№" : "№",
     location: script === "latin" ? "Joylashgan joyi" : "Жойлашган жойи",
     region: script === "latin" ? "Viloyat" : "Вилоят",
     city: script === "latin" ? "Tuman/Shahar" : "Туман/Шаҳар",
@@ -78,6 +81,7 @@ const ConsumerList = () => {
         ? "Iste'molchi ma'lumotlari"
         : "Истеъмолчи маълумотлари",
     nameLabel: script === "latin" ? "Iste'molchi nomi" : "Истеъмолчи номи",
+    numberLabel: script === "latin" ? "Tartib raqami" : "Тартиб рақами",
     regionLabel: script === "latin" ? "Viloyat" : "Вилоят",
     cityLabel: script === "latin" ? "Tuman/Shahar" : "Туман/Шаҳар",
     typeLabel: script === "latin" ? "Iste'molchi turi" : "Истеъмолчи тури",
@@ -128,7 +132,12 @@ const ConsumerList = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const consumersSnapshot = await getDocs(collection(db, "consumers"));
+      // Загружаем с сортировкой по order
+      const consumersQuery = query(
+        collection(db, "consumers"),
+        orderBy("order", "asc"),
+      );
+      const consumersSnapshot = await getDocs(consumersQuery);
       const consumersData = consumersSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -167,6 +176,7 @@ const ConsumerList = () => {
 
   const [newConsumer, setNewConsumer] = useState({
     name: "",
+    order: 0,
     regionId: "",
     regionName: "",
     cityId: "",
@@ -178,9 +188,15 @@ const ConsumerList = () => {
   // Функция для получения названия города с типом
   const getCityDisplayName = (city) => {
     if (!city) return "";
-    const type =
-      city.type === "Город" ? translations.city : translations.district;
-    return `${city.name} ${type}`;
+    let typeName = "";
+    if (city.type === "shahar" || city.type === "Город") {
+      typeName = translations.city;
+    } else if (city.type === "tuman" || city.type === "Район") {
+      typeName = translations.district;
+    } else {
+      typeName = city.type || "";
+    }
+    return `${city.name} ${typeName}`.trim();
   };
 
   const checkFormValidity = () => {
@@ -268,6 +284,13 @@ const ConsumerList = () => {
 
   const handleConsumerClick = (consumer) => {
     setSelectedConsumer({ ...consumer });
+    // Если есть regionId, фильтруем города
+    if (consumer.regionId) {
+      const filtered = cities.filter(
+        (city) => city.regionId === consumer.regionId,
+      );
+      setFilteredCities(filtered);
+    }
     setIsModalOpen(true);
     setIsEditMode(false);
   };
@@ -279,8 +302,16 @@ const ConsumerList = () => {
     }
     setIsCreating(true);
     setIsModalOpen(true);
+
+    // Вычисляем следующий порядковый номер
+    const nextOrder =
+      consumers.length > 0
+        ? Math.max(...consumers.map((item) => item.order || 0)) + 1
+        : 1;
+
     setNewConsumer({
       name: "",
+      order: nextOrder,
       regionId: "",
       regionName: "",
       cityId: "",
@@ -349,6 +380,7 @@ const ConsumerList = () => {
         });
         await log(ActionTypes.CONSUMER_CREATE, {
           consumerName: newConsumer.name,
+          order: newConsumer.order,
           regionName: newConsumer.regionName,
           cityName: newConsumer.cityName,
           typeName: newConsumer.typeName,
@@ -365,6 +397,7 @@ const ConsumerList = () => {
         await log(ActionTypes.CONSUMER_UPDATE, {
           consumerId: selectedConsumer.id,
           consumerName: selectedConsumer.name,
+          order: selectedConsumer.order,
           action: "update",
         });
         toast.success(
@@ -396,6 +429,7 @@ const ConsumerList = () => {
       await log(ActionTypes.CONSUMER_DELETE, {
         consumerId: consumerToDelete.id,
         consumerName: consumerToDelete.name,
+        order: consumerToDelete.order,
         action: "delete",
       });
       toast.success(
@@ -479,6 +513,9 @@ const ConsumerList = () => {
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {translations.number}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {translations.name}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">
@@ -499,6 +536,16 @@ const ConsumerList = () => {
                   onClick={() => handleConsumerClick(consumer)}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-150"
                 >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Hash className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      </div>
+                      <span className="font-medium text-gray-900 dark:text-white text-sm">
+                        {consumer.order || "—"}
+                      </span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -581,23 +628,42 @@ const ConsumerList = () => {
 
             <div className="px-6 py-4 overflow-y-auto max-h-[60vh]">
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.nameLabel}{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={
-                      isCreating
-                        ? newConsumer.name
-                        : selectedConsumer?.name || ""
-                    }
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    placeholder={translations.nameLabel}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.numberLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating
+                          ? newConsumer.order
+                          : selectedConsumer?.order || ""
+                      }
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed transition-colors text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.nameLabel}{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating
+                          ? newConsumer.name
+                          : selectedConsumer?.name || ""
+                      }
+                      onChange={(e) =>
+                        handleInputChange("name", e.target.value)
+                      }
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                      placeholder={translations.nameLabel}
+                    />
+                  </div>
                 </div>
 
                 <div>

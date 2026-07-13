@@ -53,6 +53,10 @@ export const ActionTypes = {
   CONSUMER_TYPE_CREATE: "consumer_type_create",
   CONSUMER_TYPE_UPDATE: "consumer_type_update",
   CONSUMER_TYPE_DELETE: "consumer_type_delete",
+
+  FUND_CREATE: "fund_create",
+  FUND_UPDATE: "fund_update",
+  FUND_DELETE: "fund_delete",
 };
 
 // Основная функция логирования

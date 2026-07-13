@@ -6,6 +6,8 @@ import {
   updateDoc,
   doc,
   deleteDoc,
+  query,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../../firebase/config";
 import {
@@ -19,8 +21,6 @@ import {
   Trash2,
   AlertCircle,
   CheckCircle,
-  Users,
-  Navigation,
 } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
 import useAuthStore from "../../store/authStore";
@@ -56,13 +56,11 @@ const Cities = () => {
     search: script === "latin" ? "Qidirish..." : "Қидириш...",
     searchPlaceholder:
       script === "latin"
-        ? "Nomi, viloyati yoki turi bo'yicha qidirish"
-        : "Номи, вилояти ёки тури бўйича қидириш",
+        ? "Nomi yoki viloyati bo'yicha qidirish"
+        : "Номи ёки вилояти бўйича қидириш",
     city: script === "latin" ? "Shahar/tuman" : "Шаҳар/туман",
     type: script === "latin" ? "Turi" : "Тури",
     region: script === "latin" ? "Viloyat" : "Вилоят",
-    population: script === "latin" ? "Aholi" : "Аҳоли",
-    area: script === "latin" ? "Maydon" : "Майдон",
     create: script === "latin" ? "Yangi shahar/tuman" : "Янги шаҳар/туман",
     edit:
       script === "latin" ? "Shahar/tuman tahrirlash" : "Шаҳар/туман таҳрирлаш",
@@ -73,8 +71,6 @@ const Cities = () => {
     name: script === "latin" ? "Shahar/tuman nomi" : "Шаҳар/туман номи",
     typeLabel: script === "latin" ? "Tur" : "Тур",
     regionLabel: script === "latin" ? "Viloyat" : "Вилоят",
-    populationLabel: script === "latin" ? "Aholi soni" : "Аҳоли сони",
-    areaLabel: script === "latin" ? "Maydoni" : "Майдони",
     cancel: script === "latin" ? "Bekor qilish" : "Бекор қилиш",
     save: script === "latin" ? "Saqlash" : "Сақлаш",
     saving: script === "latin" ? "Saqlanmoqda..." : "Сақланмоқда...",
@@ -106,11 +102,13 @@ const Cities = () => {
     citiesCount: script === "latin" ? "ta shahar/tuman" : "та шаҳар/туман",
     cityLabel: script === "latin" ? "Shahar" : "Шаҳар",
     district: script === "latin" ? "Tuman" : "Туман",
-    village: script === "latin" ? "Qishloq" : "Қишлоқ",
     noPermission:
       script === "latin"
         ? "Faqat administratorlar shahar/tuman qo'shishi mumkin"
         : "Фақат администраторлар шаҳар/туман қўшиши мумкин",
+    // Типы на узбекском
+    typeCity: script === "latin" ? "Shahar" : "Шаҳар",
+    typeDistrict: script === "latin" ? "Tuman" : "Туман",
   };
 
   useEffect(() => {
@@ -120,7 +118,12 @@ const Cities = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const citiesSnapshot = await getDocs(collection(db, "cities"));
+      // Загружаем города с сортировкой по порядковому номеру
+      const citiesQuery = query(
+        collection(db, "cities"),
+        orderBy("order", "asc"),
+      );
+      const citiesSnapshot = await getDocs(citiesQuery);
       const citiesData = citiesSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -147,9 +150,8 @@ const Cities = () => {
     name: "",
     regionId: "",
     regionName: "",
-    type: "Город",
-    population: "",
-    area: "",
+    type: "shahar",
+    order: 0, // Порядковый номер
   });
 
   const checkFormValidity = () => {
@@ -198,13 +200,17 @@ const Cities = () => {
     }
     setIsCreating(true);
     setIsModalOpen(true);
+
+    // Определяем следующий порядковый номер
+    const nextOrder =
+      cities.length > 0 ? Math.max(...cities.map((c) => c.order || 0)) + 1 : 1;
+
     setNewCity({
       name: "",
       regionId: "",
       regionName: "",
-      type: "Город",
-      population: "",
-      area: "",
+      type: "shahar",
+      order: nextOrder,
     });
     setIsSaving(false);
     log(ActionTypes.CITY_CREATE, { action: "open_form" });
@@ -315,35 +321,67 @@ const Cities = () => {
     }
   };
 
-  const filteredCities = cities.filter(
-    (city) =>
-      city.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      city.regionName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      city.type?.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
-
+  // Функция для получения отображаемого названия типа
   const getTypeLabel = (type) => {
-    const types = {
-      Город: translations.cityLabel,
-      Район: translations.district,
-      Посёлок: translations.village,
+    if (!type) return translations.notSpecified;
+
+    const typeMap = {
+      shahar: translations.typeCity,
+      tuman: translations.typeDistrict,
+      // Для обратной совместимости со старыми данными
+      Город: translations.typeCity,
+      Район: translations.typeDistrict,
     };
-    return types[type] || type;
+    return typeMap[type] || type;
   };
 
+  // Функция для получения цвета типа
   const getTypeColor = (type) => {
     const colors = {
+      shahar:
+        "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+      tuman:
+        "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+      // Для обратной совместимости со старыми типами
       Город: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
       Район:
         "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-      Посёлок:
-        "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
     };
     return (
       colors[type] ||
       "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
     );
   };
+
+  // Группировка городов по регионам с сохранением порядка
+  const getGroupedCities = () => {
+    const grouped = {};
+    const filtered = cities.filter(
+      (city) =>
+        city.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        city.regionName?.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
+
+    filtered.forEach((city) => {
+      const regionKey = city.regionId || "other";
+      if (!grouped[regionKey]) {
+        grouped[regionKey] = {
+          regionName: city.regionName || translations.notSpecified,
+          cities: [],
+        };
+      }
+      grouped[regionKey].cities.push(city);
+    });
+
+    // Сортируем города внутри каждого региона по order
+    Object.keys(grouped).forEach((key) => {
+      grouped[key].cities.sort((a, b) => (a.order || 0) - (b.order || 0));
+    });
+
+    return grouped;
+  };
+
+  const groupedCities = getGroupedCities();
 
   const isFormValid = checkFormValidity();
 
@@ -394,7 +432,7 @@ const Cities = () => {
       </div>
 
       <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-        {translations.total}: {filteredCities.length} {translations.citiesCount}
+        {translations.total}: {cities.length} {translations.citiesCount}
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -402,6 +440,9 @@ const Cities = () => {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  №
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {translations.city}
                 </th>
@@ -411,59 +452,67 @@ const Cities = () => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">
                   {translations.region}
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">
-                  {translations.population}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden xl:table-cell">
-                  {translations.area}
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {filteredCities.map((city) => (
-                <tr
-                  key={city.id}
-                  onClick={() => handleCityClick(city)}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-150"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Building className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                      </div>
-                      <span className="font-medium text-gray-900 dark:text-white text-sm">
-                        {city.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${getTypeColor(city.type)}`}
-                    >
-                      {getTypeLabel(city.type)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-gray-400" />
-                      <span>
-                        {city.regionName || translations.notSpecified}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden lg:table-cell">
-                    {city.population || translations.notSpecified}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden xl:table-cell">
-                    {city.area ? `${city.area} км²` : translations.notSpecified}
-                  </td>
-                </tr>
-              ))}
+              {Object.keys(groupedCities).map((regionKey) => {
+                const group = groupedCities[regionKey];
+                return (
+                  <React.Fragment key={regionKey}>
+                    {/* Заголовок региона */}
+                    <tr className="bg-gray-100 dark:bg-gray-700/30">
+                      <td
+                        colSpan="4"
+                        className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
+                      >
+                        {group.regionName}
+                      </td>
+                    </tr>
+                    {/* Города региона */}
+                    {group.cities.map((city, index) => (
+                      <tr
+                        key={city.id}
+                        onClick={() => handleCityClick(city)}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-150"
+                      >
+                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                          {city.order || index + 1}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <Building className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                            </div>
+                            <span className="font-medium text-gray-900 dark:text-white text-sm">
+                              {city.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium ${getTypeColor(city.type)}`}
+                          >
+                            {getTypeLabel(city.type)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 text-gray-400" />
+                            <span>
+                              {city.regionName || translations.notSpecified}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        {filteredCities.length === 0 && (
+        {cities.length === 0 && (
           <div className="text-center py-12">
             <Building
               className="mx-auto text-gray-300 dark:text-gray-600 mb-3"
@@ -536,14 +585,15 @@ const Cities = () => {
                     {translations.typeLabel}
                   </label>
                   <select
-                    value={isCreating ? newCity.type : selectedCity?.type || ""}
+                    value={
+                      isCreating ? newCity.type : selectedCity?.type || "shahar"
+                    }
                     onChange={(e) => handleInputChange("type", e.target.value)}
                     disabled={(!isCreating && !isEditMode) || isSaving}
                     className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
-                    <option value="Город">{translations.cityLabel}</option>
-                    <option value="Район">{translations.district}</option>
-                    <option value="Посёлок">{translations.village}</option>
+                    <option value="shahar">{translations.typeCity}</option>
+                    <option value="tuman">{translations.typeDistrict}</option>
                   </select>
                 </div>
 
@@ -569,51 +619,6 @@ const Cities = () => {
                       </option>
                     ))}
                   </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      {translations.populationLabel}
-                    </label>
-                    <input
-                      type="text"
-                      value={
-                        isCreating
-                          ? newCity.population
-                          : selectedCity?.population || ""
-                      }
-                      onChange={(e) =>
-                        handleInputChange("population", e.target.value)
-                      }
-                      disabled={(!isCreating && !isEditMode) || isSaving}
-                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                      placeholder="500 000"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      {translations.areaLabel}
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={
-                          isCreating ? newCity.area : selectedCity?.area || ""
-                        }
-                        onChange={(e) =>
-                          handleInputChange("area", e.target.value)
-                        }
-                        disabled={(!isCreating && !isEditMode) || isSaving}
-                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm pr-12 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                        placeholder="0"
-                      />
-                      <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
-                        км²
-                      </span>
-                    </div>
-                  </div>
                 </div>
 
                 {(isCreating || isEditMode) && (

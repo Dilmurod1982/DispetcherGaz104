@@ -23,6 +23,7 @@ import ProtectedRoute from "./components/Layout/ProtectedRoute";
 import useThemeStore from "./store/themeStore";
 import useAuthStore from "./store/authStore";
 import useLanguageStore from "./store/languageStore";
+import FundBalance from "./pages/Fund/FundBalance/FundBalance";
 
 const EmptyPage = ({ title }) => {
   const { script } = useLanguageStore();
@@ -119,6 +120,9 @@ const App = () => {
 
           {/* Пользователи */}
           <Route path="/users" element={<Users />} />
+
+          {/* Фонды */}
+          <Route path="/funds/balance" element={<FundBalance />} />
 
           {/* Логи */}
           <Route path="/logs" element={<Logs />} />

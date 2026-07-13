@@ -6,6 +6,8 @@ import {
   updateDoc,
   doc,
   deleteDoc,
+  query,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../../firebase/config";
 import {
@@ -156,6 +158,7 @@ const Grp = () => {
         ? "Nomi yoki joylashgan joyi bo'yicha qidirish"
         : "Номи ёки жойлашган жойи бўйича қидириш",
     name: script === "latin" ? "Nomi" : "Номи",
+    number: script === "latin" ? "№" : "№",
     location: script === "latin" ? "Joylashgan joyi" : "Жойлашган жойи",
     model: script === "latin" ? "GTQ turi" : "ГТҚ тури",
     pressure: script === "latin" ? "Bosim turi" : "Босим тури",
@@ -165,6 +168,7 @@ const Grp = () => {
     edit: script === "latin" ? "GTQ tahrirlash" : "ГТҚ таҳрирлаш",
     view: script === "latin" ? "GTQ ma'lumotlari" : "ГТҚ маълумотлари",
     nameLabel: script === "latin" ? "Nomi" : "Номи",
+    numberLabel: script === "latin" ? "Tartib raqami" : "Тартиб рақами",
     locationLabel: script === "latin" ? "Joylashgan joyi" : "Жойлашган жойи",
     modelLabel: script === "latin" ? "GTQ turi" : "ГТҚ тури",
     pressureLabel: script === "latin" ? "Bosim turi" : "Босим тури",
@@ -225,7 +229,9 @@ const Grp = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const grpSnapshot = await getDocs(collection(db, "grp"));
+      // Загружаем с сортировкой по order
+      const grpQuery = query(collection(db, "grp"), orderBy("order", "asc"));
+      const grpSnapshot = await getDocs(grpQuery);
       const grpData = grpSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -255,6 +261,7 @@ const Grp = () => {
 
   const [newGrp, setNewGrp] = useState({
     name: "",
+    order: 0,
     locationId: "",
     locationName: "",
     modelId: "",
@@ -279,23 +286,31 @@ const Grp = () => {
   const handleLocationChange = (locationId) => {
     const selectedCity = cities.find((city) => city.id === locationId);
     if (selectedCity) {
-      const type =
-        selectedCity.type === "Город"
-          ? translations.city
-          : translations.district;
-      const locationNameWithType = `${selectedCity.name} (${type})`;
+      // Правильное определение типа на узбекском
+      let typeName = "";
+      if (selectedCity.type === "shahar" || selectedCity.type === "Город") {
+        typeName = translations.city;
+      } else if (
+        selectedCity.type === "tuman" ||
+        selectedCity.type === "Район"
+      ) {
+        typeName = translations.district;
+      } else {
+        typeName = selectedCity.type || "";
+      }
+      const locationName = `${selectedCity.name} ${typeName}`.trim();
 
       if (isCreating) {
         setNewGrp((prev) => ({
           ...prev,
           locationId: selectedCity.id,
-          locationName: locationNameWithType,
+          locationName: locationName,
         }));
       } else {
         setSelectedGrp((prev) => ({
           ...prev,
           locationId: selectedCity.id,
-          locationName: locationNameWithType,
+          locationName: locationName,
         }));
       }
     }
@@ -375,8 +390,16 @@ const Grp = () => {
     }
     setIsCreating(true);
     setIsModalOpen(true);
+
+    // Вычисляем следующий порядковый номер
+    const nextOrder =
+      grpList.length > 0
+        ? Math.max(...grpList.map((item) => item.order || 0)) + 1
+        : 1;
+
     setNewGrp({
       name: "",
+      order: nextOrder,
       locationId: "",
       locationName: "",
       modelId: "",
@@ -433,6 +456,7 @@ const Grp = () => {
         });
         await log(ActionTypes.GRP_CREATE, {
           grpName: newGrp.name,
+          order: newGrp.order,
           locationName: newGrp.locationName,
           modelName: newGrp.modelName,
         });
@@ -445,6 +469,7 @@ const Grp = () => {
         await log(ActionTypes.GRP_UPDATE, {
           grpId: selectedGrp.id,
           grpName: selectedGrp.name,
+          order: selectedGrp.order,
         });
         toast.success(script === "latin" ? "GTQ yangilandi" : "ГТҚ янгиланди");
       }
@@ -469,6 +494,7 @@ const Grp = () => {
       await log(ActionTypes.GRP_DELETE, {
         grpId: grpToDelete.id,
         grpName: grpToDelete.name,
+        order: grpToDelete.order,
       });
       toast.success(script === "latin" ? "GTQ o'chirildi" : "ГТҚ ўчирилди");
       await loadData();
@@ -556,6 +582,9 @@ const Grp = () => {
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {translations.number}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {translations.name}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">
@@ -576,6 +605,16 @@ const Grp = () => {
                   onClick={() => handleGrpClick(grp)}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-150"
                 >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Hash className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      </div>
+                      <span className="font-medium text-gray-900 dark:text-white text-sm">
+                        {grp.order || "—"}
+                      </span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -670,19 +709,36 @@ const Grp = () => {
 
             <div className="px-6 py-4 overflow-y-auto max-h-[60vh]">
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.nameLabel}{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={isCreating ? newGrp.name : selectedGrp?.name || ""}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    placeholder={translations.nameLabel}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.numberLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating ? newGrp.order : selectedGrp?.order || ""
+                      }
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed transition-colors text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.nameLabel}{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={isCreating ? newGrp.name : selectedGrp?.name || ""}
+                      onChange={(e) =>
+                        handleInputChange("name", e.target.value)
+                      }
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                      placeholder={translations.nameLabel}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -702,11 +758,18 @@ const Grp = () => {
                   >
                     <option value="">{translations.selectCity}</option>
                     {cities.map((city) => {
-                      const type =
-                        city.type === "Город"
-                          ? translations.city
-                          : translations.district;
-                      const displayName = `${city.name} (${type})`;
+                      let typeName = "";
+                      if (city.type === "shahar" || city.type === "Город") {
+                        typeName = translations.city;
+                      } else if (
+                        city.type === "tuman" ||
+                        city.type === "Район"
+                      ) {
+                        typeName = translations.district;
+                      } else {
+                        typeName = city.type || "";
+                      }
+                      const displayName = `${city.name} ${typeName}`.trim();
                       return (
                         <option key={city.id} value={city.id}>
                           {displayName}

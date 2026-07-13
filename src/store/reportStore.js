@@ -69,7 +69,7 @@ const useReportStore = create((set, get) => ({
       const reports = await getReportsByDate(currentMonth, date, regionId);
 
       set({
-        reports,
+        reports: reports || [], // Убеждаемся, что это массив
         selectedDate: date,
         loading: false,
       });

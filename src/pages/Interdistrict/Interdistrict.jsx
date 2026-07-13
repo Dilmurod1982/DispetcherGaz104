@@ -6,6 +6,8 @@ import {
   updateDoc,
   doc,
   deleteDoc,
+  query,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../../firebase/config";
 import {
@@ -156,6 +158,7 @@ const Interdistrict = () => {
     searchPlaceholder:
       script === "latin" ? "Nomi bo'yicha qidirish" : "Номи бўйича қидириш",
     name: script === "latin" ? "Nomi" : "Номи",
+    number: script === "latin" ? "№" : "№",
     supplier:
       script === "latin" ? "Gaz yetkazib beruvchi" : "Газ етказиб берувчи",
     receiver: script === "latin" ? "Qabul qiluvchi" : "Қабул қилувчи",
@@ -171,6 +174,7 @@ const Interdistrict = () => {
         ? "Hisoblagich ma'lumotlari"
         : "Ҳисоблагич маълумотлари",
     nameLabel: script === "latin" ? "Nomi" : "Номи",
+    numberLabel: script === "latin" ? "Tartib raqami" : "Тартиб рақами",
     supplierLabel:
       script === "latin" ? "Gaz yetkazib beruvchi" : "Газ етказиб берувчи",
     receiverLabel: script === "latin" ? "Qabul qiluvchi" : "Қабул қилувчи",
@@ -249,9 +253,12 @@ const Interdistrict = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const interdistrictsSnapshot = await getDocs(
+      // Загружаем с сортировкой по order
+      const interdistrictsQuery = query(
         collection(db, "interdistrict"),
+        orderBy("order", "asc"),
       );
+      const interdistrictsSnapshot = await getDocs(interdistrictsQuery);
       const interdistrictsData = interdistrictsSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -281,6 +288,7 @@ const Interdistrict = () => {
 
   const [newItem, setNewItem] = useState({
     name: "",
+    order: 0,
     supplierId: "",
     supplierName: "",
     receiverId: "",
@@ -312,11 +320,19 @@ const Interdistrict = () => {
   const handleSupplierChange = (cityId) => {
     const selectedCity = cities.find((city) => city.id === cityId);
     if (selectedCity) {
-      const type =
-        selectedCity.type === "Город"
-          ? translations.city
-          : translations.district;
-      const displayName = `${selectedCity.name} (${type})`;
+      // Правильное определение типа на узбекском
+      let typeName = "";
+      if (selectedCity.type === "shahar" || selectedCity.type === "Город") {
+        typeName = translations.city;
+      } else if (
+        selectedCity.type === "tuman" ||
+        selectedCity.type === "Район"
+      ) {
+        typeName = translations.district;
+      } else {
+        typeName = selectedCity.type || "";
+      }
+      const displayName = `${selectedCity.name} ${typeName}`.trim();
 
       if (isCreating) {
         setNewItem((prev) => ({
@@ -349,11 +365,19 @@ const Interdistrict = () => {
   const handleReceiverChange = (cityId) => {
     const selectedCity = cities.find((city) => city.id === cityId);
     if (selectedCity) {
-      const type =
-        selectedCity.type === "Город"
-          ? translations.city
-          : translations.district;
-      const displayName = `${selectedCity.name} (${type})`;
+      // Правильное определение типа на узбекском
+      let typeName = "";
+      if (selectedCity.type === "shahar" || selectedCity.type === "Город") {
+        typeName = translations.city;
+      } else if (
+        selectedCity.type === "tuman" ||
+        selectedCity.type === "Район"
+      ) {
+        typeName = translations.district;
+      } else {
+        typeName = selectedCity.type || "";
+      }
+      const displayName = `${selectedCity.name} ${typeName}`.trim();
 
       if (isCreating) {
         if (newItem.supplierId === cityId) {
@@ -459,8 +483,16 @@ const Interdistrict = () => {
     }
     setIsCreating(true);
     setIsModalOpen(true);
+
+    // Вычисляем следующий порядковый номер
+    const nextOrder =
+      interdistricts.length > 0
+        ? Math.max(...interdistricts.map((item) => item.order || 0)) + 1
+        : 1;
+
     setNewItem({
       name: "",
+      order: nextOrder,
       supplierId: "",
       supplierName: "",
       receiverId: "",
@@ -522,6 +554,7 @@ const Interdistrict = () => {
         });
         await log(ActionTypes.INTERDISTRICT_CREATE, {
           itemName: newItem.name,
+          order: newItem.order,
           supplierName: newItem.supplierName,
           receiverName: newItem.receiverName,
         });
@@ -536,6 +569,7 @@ const Interdistrict = () => {
         await log(ActionTypes.INTERDISTRICT_UPDATE, {
           itemId: selectedItem.id,
           itemName: selectedItem.name,
+          order: selectedItem.order,
         });
         toast.success(
           script === "latin"
@@ -564,6 +598,7 @@ const Interdistrict = () => {
       await log(ActionTypes.INTERDISTRICT_DELETE, {
         itemId: itemToDelete.id,
         itemName: itemToDelete.name,
+        order: itemToDelete.order,
       });
       toast.success(
         script === "latin" ? "Hisoblagich o'chirildi" : "Ҳисоблагич ўчирилди",
@@ -658,6 +693,9 @@ const Interdistrict = () => {
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {translations.number}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {translations.name}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">
@@ -678,6 +716,16 @@ const Interdistrict = () => {
                   onClick={() => handleItemClick(item)}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-150"
                 >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-teal-100 dark:bg-teal-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Hash className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                      </div>
+                      <span className="font-medium text-gray-900 dark:text-white text-sm">
+                        {item.order || "—"}
+                      </span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-teal-100 dark:bg-teal-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -773,19 +821,38 @@ const Interdistrict = () => {
 
             <div className="px-6 py-4 overflow-y-auto max-h-[60vh]">
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.nameLabel}{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={isCreating ? newItem.name : selectedItem?.name || ""}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    placeholder={translations.nameLabel}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.numberLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating ? newItem.order : selectedItem?.order || ""
+                      }
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed transition-colors text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.nameLabel}{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating ? newItem.name : selectedItem?.name || ""
+                      }
+                      onChange={(e) =>
+                        handleInputChange("name", e.target.value)
+                      }
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                      placeholder={translations.nameLabel}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -805,11 +872,18 @@ const Interdistrict = () => {
                   >
                     <option value="">{translations.selectCity}</option>
                     {cities.map((city) => {
-                      const type =
-                        city.type === "Город"
-                          ? translations.city
-                          : translations.district;
-                      const displayName = `${city.name} (${type})`;
+                      let typeName = "";
+                      if (city.type === "shahar" || city.type === "Город") {
+                        typeName = translations.city;
+                      } else if (
+                        city.type === "tuman" ||
+                        city.type === "Район"
+                      ) {
+                        typeName = translations.district;
+                      } else {
+                        typeName = city.type || "";
+                      }
+                      const displayName = `${city.name} ${typeName}`.trim();
                       return (
                         <option key={city.id} value={city.id}>
                           {displayName}
@@ -844,11 +918,18 @@ const Interdistrict = () => {
                             : selectedItem?.supplierId),
                       )
                       .map((city) => {
-                        const type =
-                          city.type === "Город"
-                            ? translations.city
-                            : translations.district;
-                        const displayName = `${city.name} (${type})`;
+                        let typeName = "";
+                        if (city.type === "shahar" || city.type === "Город") {
+                          typeName = translations.city;
+                        } else if (
+                          city.type === "tuman" ||
+                          city.type === "Район"
+                        ) {
+                          typeName = translations.district;
+                        } else {
+                          typeName = city.type || "";
+                        }
+                        const displayName = `${city.name} ${typeName}`.trim();
                         return (
                           <option key={city.id} value={city.id}>
                             {displayName}

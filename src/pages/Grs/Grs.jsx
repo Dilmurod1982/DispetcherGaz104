@@ -6,6 +6,9 @@ import {
   updateDoc,
   doc,
   deleteDoc,
+  query,
+  where,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../../firebase/config";
 import {
@@ -22,6 +25,7 @@ import {
   Calendar,
   Zap,
   Factory,
+  Hash,
 } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
 import useAuthStore from "../../store/authStore";
@@ -35,6 +39,8 @@ const Grs = () => {
   const { log } = useLogger();
   const [grsList, setGrsList] = useState([]);
   const [cities, setCities] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const [filteredCities, setFilteredCities] = useState([]);
   const [selectedGrs, setSelectedGrs] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -44,7 +50,6 @@ const Grs = () => {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Проверка, является ли пользователь админом
   const isAdmin = userData?.role === "admin" || userData?.role === "Админ";
 
   const translations = {
@@ -60,6 +65,7 @@ const Grs = () => {
         ? "Nomi yoki joylashgan joyi bo'yicha qidirish"
         : "Номи ёки жойлашган жойи бўйича қидириш",
     name: script === "latin" ? "Nomi" : "Номи",
+    number: script === "latin" ? "№" : "№",
     location: script === "latin" ? "Joylashgan joyi" : "Жойлашган жойи",
     year: script === "latin" ? "Ishga tushirilgan yil" : "Ишга туширилган йил",
     capacity: script === "latin" ? "Quvvati (m³/soat)" : "Қуввати (м³/соат)",
@@ -67,7 +73,9 @@ const Grs = () => {
     edit: script === "latin" ? "GTS tahrirlash" : "ГТШ таҳрирлаш",
     view: script === "latin" ? "GTS ma'lumotlari" : "ГТШ маълумотлари",
     nameLabel: script === "latin" ? "GTS nomi" : "ГТШ номи",
-    locationLabel: script === "latin" ? "Joylashgan joyi" : "Жойлашган жойи",
+    numberLabel: script === "latin" ? "Tartib raqami" : "Тартиб рақами",
+    regionLabel: script === "latin" ? "Viloyat" : "Вилоят",
+    locationLabel: script === "latin" ? "Tuman/shahar" : "Туман/шаҳар",
     yearLabel:
       script === "latin" ? "Ishga tushirilgan yil" : "Ишга туширилган йил",
     capacityLabel:
@@ -87,8 +95,9 @@ const Grs = () => {
     deleteYes: script === "latin" ? "Ha, o'chirish" : "Ҳа, ўчириш",
     deleteNo: script === "latin" ? "Yo'q" : "Йўқ",
     required: script === "latin" ? "Majburiy maydon" : "Мажбурий майдон",
+    selectRegion: script === "latin" ? "Viloyatni tanlang" : "Вилоятни танланг",
     selectCity:
-      script === "latin" ? "Shahar/tuman tanlang" : "Шаҳар/туман танланг",
+      script === "latin" ? "Tuman/shaharni tanlang" : "Туман/шаҳарни танланг",
     noData: script === "latin" ? "GTS topilmadi" : "ГТШ топилмади",
     noDataFound:
       script === "latin"
@@ -99,8 +108,6 @@ const Grs = () => {
     notSpecified: script === "latin" ? "Ko'rsatilmagan" : "Кўрсатилмаган",
     total: script === "latin" ? "Jami" : "Жами",
     totalCount: script === "latin" ? "ta GTS" : "та ГТШ",
-    city: script === "latin" ? "shahar" : "шаҳар",
-    district: script === "latin" ? "tuman" : "туман",
     noPermission:
       script === "latin"
         ? "Faqat administratorlar GTS qo'shishi mumkin"
@@ -114,7 +121,9 @@ const Grs = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const grsSnapshot = await getDocs(collection(db, "grs"));
+      // Загружаем ГРС с сортировкой по order
+      const grsQuery = query(collection(db, "grs"), orderBy("order", "asc"));
+      const grsSnapshot = await getDocs(grsQuery);
       const grsData = grsSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
@@ -127,6 +136,15 @@ const Grs = () => {
         ...doc.data(),
       }));
       setCities(citiesData);
+
+      const regionsSnapshot = await getDocs(collection(db, "regions"));
+      const regionsData = regionsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setRegions(regionsData);
+
+      setFilteredCities(citiesData);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error(
@@ -139,9 +157,11 @@ const Grs = () => {
 
   const [newGrs, setNewGrs] = useState({
     name: "",
+    order: 0,
+    regionId: "",
+    regionName: "",
     locationId: "",
     locationName: "",
-    locationType: "",
     year: "",
     capacity: "",
   });
@@ -160,28 +180,58 @@ const Grs = () => {
     }
   };
 
+  const handleRegionChange = (regionId) => {
+    const selectedRegion = regions.find((region) => region.id === regionId);
+    if (selectedRegion) {
+      const citiesInRegion = cities.filter(
+        (city) => city.regionId === regionId,
+      );
+      setFilteredCities(citiesInRegion);
+
+      if (isCreating) {
+        setNewGrs((prev) => ({
+          ...prev,
+          regionId: selectedRegion.id,
+          regionName: selectedRegion.name,
+          locationId: "",
+          locationName: "",
+        }));
+      } else {
+        setSelectedGrs((prev) => ({
+          ...prev,
+          regionId: selectedRegion.id,
+          regionName: selectedRegion.name,
+          locationId: "",
+          locationName: "",
+        }));
+      }
+    }
+  };
+
   const handleLocationChange = (locationId) => {
-    const selectedCity = cities.find((city) => city.id === locationId);
+    const selectedCity = filteredCities.find((city) => city.id === locationId);
     if (selectedCity) {
-      const type =
-        selectedCity.type === "Город"
-          ? translations.city
-          : translations.district;
-      const locationNameWithType = `${selectedCity.name} (${type})`;
+      const typeName =
+        selectedCity.type === "shahar"
+          ? script === "latin"
+            ? "shahar"
+            : "шаҳар"
+          : script === "latin"
+            ? "tuman"
+            : "туман";
+      const locationName = `${selectedCity.name} ${typeName}`;
 
       if (isCreating) {
         setNewGrs((prev) => ({
           ...prev,
           locationId: selectedCity.id,
-          locationName: locationNameWithType,
-          locationType: selectedCity.type,
+          locationName: locationName,
         }));
       } else {
         setSelectedGrs((prev) => ({
           ...prev,
           locationId: selectedCity.id,
-          locationName: locationNameWithType,
-          locationType: selectedCity.type,
+          locationName: locationName,
         }));
       }
     }
@@ -189,6 +239,14 @@ const Grs = () => {
 
   const handleGrsClick = (grs) => {
     setSelectedGrs({ ...grs });
+    if (grs.regionId) {
+      const citiesInRegion = cities.filter(
+        (city) => city.regionId === grs.regionId,
+      );
+      setFilteredCities(citiesInRegion);
+    } else {
+      setFilteredCities(cities);
+    }
     setIsModalOpen(true);
     setIsEditMode(false);
   };
@@ -200,14 +258,24 @@ const Grs = () => {
     }
     setIsCreating(true);
     setIsModalOpen(true);
+
+    // Вычисляем следующий порядковый номер
+    const nextOrder =
+      grsList.length > 0
+        ? Math.max(...grsList.map((g) => g.order || 0)) + 1
+        : 1;
+
     setNewGrs({
       name: "",
+      order: nextOrder,
+      regionId: "",
+      regionName: "",
       locationId: "",
       locationName: "",
-      locationType: "",
       year: "",
       capacity: "",
     });
+    setFilteredCities(cities);
     setIsSaving(false);
     log(ActionTypes.GRS_CREATE, { action: "open_form" });
   };
@@ -220,6 +288,7 @@ const Grs = () => {
     setSelectedGrs(null);
     setIsDeleteConfirmOpen(false);
     setIsSaving(false);
+    setFilteredCities(cities);
   };
 
   const handleEdit = () => {
@@ -229,6 +298,12 @@ const Grs = () => {
     }
     setIsEditMode(true);
     setIsSaving(false);
+    if (selectedGrs?.regionId) {
+      const citiesInRegion = cities.filter(
+        (city) => city.regionId === selectedGrs.regionId,
+      );
+      setFilteredCities(citiesInRegion);
+    }
   };
 
   const handleCancel = () => {
@@ -239,6 +314,12 @@ const Grs = () => {
       setIsEditMode(false);
       const originalGrs = grsList.find((grs) => grs.id === selectedGrs?.id);
       setSelectedGrs(originalGrs ? { ...originalGrs } : null);
+      if (originalGrs?.regionId) {
+        const citiesInRegion = cities.filter(
+          (city) => city.regionId === originalGrs.regionId,
+        );
+        setFilteredCities(citiesInRegion);
+      }
     }
   };
 
@@ -258,6 +339,7 @@ const Grs = () => {
         });
         await log(ActionTypes.GRS_CREATE, {
           grsName: newGrs.name,
+          order: newGrs.order,
           locationName: newGrs.locationName,
           capacity: newGrs.capacity,
         });
@@ -270,6 +352,7 @@ const Grs = () => {
         await log(ActionTypes.GRS_UPDATE, {
           grsId: selectedGrs.id,
           grsName: selectedGrs.name,
+          order: selectedGrs.order,
         });
         toast.success(script === "latin" ? "GTS yangilandi" : "ГТШ янгиланди");
       }
@@ -296,6 +379,7 @@ const Grs = () => {
       await log(ActionTypes.GRS_DELETE, {
         grsId: grsToDelete.id,
         grsName: grsToDelete.name,
+        order: grsToDelete.order,
       });
       toast.success(script === "latin" ? "GTS o'chirildi" : "ГТШ ўчирилди");
       await loadData();
@@ -373,6 +457,9 @@ const Grs = () => {
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {translations.number}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {translations.name}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">
@@ -393,6 +480,16 @@ const Grs = () => {
                   onClick={() => handleGrsClick(grs)}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-150"
                 >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Hash className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                      </div>
+                      <span className="font-medium text-gray-900 dark:text-white text-sm">
+                        {grs.order || "—"}
+                      </span>
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -487,19 +584,58 @@ const Grs = () => {
 
             <div className="px-6 py-4 overflow-y-auto max-h-[60vh]">
               <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.numberLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating ? newGrs.order : selectedGrs?.order || ""
+                      }
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed transition-colors text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.nameLabel}{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={isCreating ? newGrs.name : selectedGrs?.name || ""}
+                      onChange={(e) =>
+                        handleInputChange("name", e.target.value)
+                      }
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                      placeholder={translations.nameLabel}
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.nameLabel}{" "}
+                    {translations.regionLabel}{" "}
                     <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={isCreating ? newGrs.name : selectedGrs?.name || ""}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
+                  <select
+                    value={
+                      isCreating ? newGrs.regionId : selectedGrs?.regionId || ""
+                    }
+                    onChange={(e) => handleRegionChange(e.target.value)}
                     disabled={(!isCreating && !isEditMode) || isSaving}
                     className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    placeholder={translations.nameLabel}
-                  />
+                  >
+                    <option value="">{translations.selectRegion}</option>
+                    {regions.map((region) => (
+                      <option key={region.id} value={region.id}>
+                        {region.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -514,16 +650,25 @@ const Grs = () => {
                         : selectedGrs?.locationId || ""
                     }
                     onChange={(e) => handleLocationChange(e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
+                    disabled={
+                      (!isCreating && !isEditMode) ||
+                      isSaving ||
+                      (!isCreating && !isEditMode && !selectedGrs?.regionId) ||
+                      (isCreating && !newGrs.regionId)
+                    }
                     className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     <option value="">{translations.selectCity}</option>
-                    {cities.map((city) => {
-                      const type =
-                        city.type === "Город"
-                          ? translations.city
-                          : translations.district;
-                      const displayName = `${city.name} (${type})`;
+                    {filteredCities.map((city) => {
+                      const typeName =
+                        city.type === "shahar"
+                          ? script === "latin"
+                            ? "shahar"
+                            : "шаҳар"
+                          : script === "latin"
+                            ? "tuman"
+                            : "туман";
+                      const displayName = `${city.name} ${typeName}`;
                       return (
                         <option key={city.id} value={city.id}>
                           {displayName}
@@ -531,48 +676,65 @@ const Grs = () => {
                       );
                     })}
                   </select>
+                  {!isCreating && !isEditMode && !selectedGrs?.regionId && (
+                    <p className="text-xs text-orange-500 mt-1">
+                      {script === "latin"
+                        ? "Iltimos, avval viloyatni tanlang"
+                        : "Илтимос, аввал вилоятни танланг"}
+                    </p>
+                  )}
+                  {isCreating && !newGrs.regionId && (
+                    <p className="text-xs text-orange-500 mt-1">
+                      {script === "latin"
+                        ? "Iltimos, avval viloyatni tanlang"
+                        : "Илтимос, аввал вилоятни танланг"}
+                    </p>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.yearLabel}
-                  </label>
-                  <input
-                    type="number"
-                    value={isCreating ? newGrs.year : selectedGrs?.year || ""}
-                    onChange={(e) => handleInputChange("year", e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    placeholder="Masalan: 2020"
-                    min="1900"
-                    max="2100"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.capacityLabel}
-                  </label>
-                  <div className="relative">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.yearLabel}
+                    </label>
                     <input
                       type="number"
-                      value={
-                        isCreating
-                          ? newGrs.capacity
-                          : selectedGrs?.capacity || ""
-                      }
+                      value={isCreating ? newGrs.year : selectedGrs?.year || ""}
                       onChange={(e) =>
-                        handleInputChange("capacity", e.target.value)
+                        handleInputChange("year", e.target.value)
                       }
                       disabled={(!isCreating && !isEditMode) || isSaving}
-                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm pr-16 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                      placeholder="0"
-                      min="0"
-                      step="0.01"
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                      placeholder="Masalan: 2020"
+                      min="1900"
+                      max="2100"
                     />
-                    <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
-                      м³/соат
-                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.capacityLabel}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={
+                          isCreating
+                            ? newGrs.capacity
+                            : selectedGrs?.capacity || ""
+                        }
+                        onChange={(e) =>
+                          handleInputChange("capacity", e.target.value)
+                        }
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm pr-16 ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        placeholder="0"
+                        min="0"
+                        step="0.01"
+                      />
+                      <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
+                        м³/соат
+                      </span>
+                    </div>
                   </div>
                 </div>
 

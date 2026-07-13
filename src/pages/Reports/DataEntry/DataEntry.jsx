@@ -53,7 +53,6 @@ const ConfirmModal = ({
   const getAllItems = () => {
     const items = [];
     const categories = [
-      { key: "grs", label: translations.grs },
       { key: "nodes", label: translations.nodes },
       { key: "interdistrict", label: translations.interdistrict },
       { key: "consumers", label: translations.consumers },
@@ -346,6 +345,14 @@ const DataEntry = () => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Триггер для принудительного обновления
+  const [forceUpdate, setForceUpdate] = useState(0);
+
+  // Получение ID региона пользователя
+  const getRegionId = () => {
+    return userData?.assignedCities?.[0] || null;
+  };
+
   const translations = {
     title:
       script === "latin" ? "Ma'lumotlarni kiritish" : "Маълумотларни киритиш",
@@ -457,13 +464,16 @@ const DataEntry = () => {
         grp: [],
       };
 
+      // 1. Загружаем ГРС по городу (locationId)
       const grsQuery = query(
         collection(db, "grs"),
         where("locationId", "in", assignedCities),
       );
       const grsSnapshot = await getDocs(grsQuery);
+      const grsIds = [];
       grsSnapshot.docs.forEach((doc) => {
         const data = doc.data();
+        grsIds.push(doc.id);
         objects.grs.push({
           id: doc.id,
           ...data,
@@ -472,21 +482,25 @@ const DataEntry = () => {
         });
       });
 
-      const nodesQuery = query(
-        collection(db, "nodes"),
-        where("cityId", "in", assignedCities),
-      );
-      const nodesSnapshot = await getDocs(nodesQuery);
-      nodesSnapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        objects.nodes.push({
-          id: doc.id,
-          ...data,
-          category: "nodes",
-          displayName: `${data.name || data.id} (ГТШ: ${data.grsName || "—"})`,
+      // 2. Загружаем УЗЛЫ по ГРС (grsId)
+      if (grsIds.length > 0) {
+        const nodesQuery = query(
+          collection(db, "nodes"),
+          where("grsId", "in", grsIds),
+        );
+        const nodesSnapshot = await getDocs(nodesQuery);
+        nodesSnapshot.docs.forEach((doc) => {
+          const data = doc.data();
+          objects.nodes.push({
+            id: doc.id,
+            ...data,
+            category: "nodes",
+            displayName: `${data.name || data.id} (ГТШ: ${data.grsName || "—"})`,
+          });
         });
-      });
+      }
 
+      // 3. Загружаем остальные объекты
       const interQuery = query(
         collection(db, "interdistrict"),
         where("supplierId", "in", assignedCities),
@@ -545,6 +559,7 @@ const DataEntry = () => {
     }
   };
 
+  // Загрузка отчетов при монтировании
   useEffect(() => {
     if (user?.uid) {
       loadUserAssignedItems(user.uid);
@@ -552,11 +567,20 @@ const DataEntry = () => {
     }
   }, [user]);
 
+  // Загружаем отчеты при смене даты или принудительном обновлении
   useEffect(() => {
     if (selectedDate) {
-      loadReports(selectedDate);
+      const regionId = getRegionId();
+      const loadReportsData = async () => {
+        if (regionId) {
+          await loadReports(selectedDate, regionId);
+        } else {
+          await loadReports(selectedDate);
+        }
+      };
+      loadReportsData();
     }
-  }, [selectedDate]);
+  }, [selectedDate, forceUpdate]);
 
   useEffect(() => {
     const hours = [];
@@ -581,7 +605,7 @@ const DataEntry = () => {
   }, [selectedDate, reportHours]);
 
   const checkExistingReport = async () => {
-    const regionId = userData?.assignedCities?.[0];
+    const regionId = getRegionId();
     if (!regionId) return;
 
     const result = await getReportByTime(selectedDate, selectedHour, regionId);
@@ -609,7 +633,10 @@ const DataEntry = () => {
 
   const handleHourSelect = (hour) => {
     const isToday = selectedDate === getToday();
-    const existingReport = reports.find((r) => r.hour === hour);
+    const regionId = getRegionId();
+    const existingReport = reports.find(
+      (r) => r.hour === hour && r.regionId === regionId,
+    );
     const isAvailable = isReportAvailable(selectedDate, hour);
     const canCreateSpecific = canCreateSpecificReport(
       selectedDate,
@@ -696,7 +723,6 @@ const DataEntry = () => {
 
   const getFieldsForCategory = (category) => {
     const fields = {
-      grs: ["flow", "pressureIn", "pressureOut"],
       nodes: ["flow", "pressureIn", "pressureOut"],
       interdistrict: ["flow", "pressureIn", "pressureOut"],
       consumers: ["flow"],
@@ -707,10 +733,6 @@ const DataEntry = () => {
 
   const getAllItems = () => {
     const items = [];
-
-    assignedObjects.grs.forEach((item) => {
-      items.push({ ...item, category: "grs", categoryLabel: translations.grs });
-    });
 
     assignedObjects.nodes.forEach((item) => {
       items.push({
@@ -743,7 +765,6 @@ const DataEntry = () => {
     return items;
   };
 
-  // Проверка, все ли поля заполнены (0 считается валидным значением)
   const hasAllFieldsFilled = () => {
     const allItems = getAllItems();
     if (allItems.length === 0) return false;
@@ -764,7 +785,6 @@ const DataEntry = () => {
     return allFilled;
   };
 
-  // Проверка, можно ли редактировать
   const canEditCurrentReport = () => {
     if (!existingReport) return false;
     return canEditReport(
@@ -774,16 +794,24 @@ const DataEntry = () => {
     );
   };
 
-  // Проверка, можно ли создавать отчеты для сегодняшнего дня
   const canCreateToday =
     selectedDate === getToday() && canCreateReportForToday(selectedDate);
 
-  // Открытие модального окна подтверждения
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true);
   };
 
-  // Сохранение отчета
+  // Функция для принудительного обновления отчетов
+  const refreshReports = async () => {
+    const regionId = getRegionId();
+    if (regionId) {
+      await loadReports(selectedDate, regionId);
+    } else {
+      await loadReports(selectedDate);
+    }
+    setForceUpdate((prev) => prev + 1);
+  };
+
   const handleConfirmSave = async () => {
     if (selectedHour === null) {
       toast.warning(
@@ -799,7 +827,7 @@ const DataEntry = () => {
       return;
     }
 
-    const regionId = userData?.assignedCities?.[0];
+    const regionId = getRegionId();
     const regionName = userData?.assignedCitiesNames?.[0];
 
     if (!regionId) {
@@ -815,7 +843,9 @@ const DataEntry = () => {
 
     try {
       const isToday = selectedDate === getToday();
-      const existingReport = reports.find((r) => r.hour === selectedHour);
+      const existingReport = reports.find(
+        (r) => r.hour === selectedHour && r.regionId === regionId,
+      );
 
       if (isToday && !existingReport) {
         const canCreate = canCreateSpecificReport(
@@ -850,7 +880,7 @@ const DataEntry = () => {
       const reportType = getReportTypeByHour(selectedHour);
 
       const dataWithNames = {};
-      const categories = ["grs", "nodes", "interdistrict", "consumers", "grp"];
+      const categories = ["nodes", "interdistrict", "consumers", "grp"];
 
       categories.forEach((cat) => {
         dataWithNames[cat] = {};
@@ -907,7 +937,9 @@ const DataEntry = () => {
         setIsReportSaved(true);
         setIsEditing(true);
         setIsConfirmModalOpen(false);
-        await loadReports(selectedDate);
+
+        // Обновляем отчеты
+        await refreshReports();
 
         const updated = await getReportByTime(
           selectedDate,
@@ -934,7 +966,6 @@ const DataEntry = () => {
     }
   };
 
-  // Открытие модального окна редактирования
   const handleEditClick = () => {
     if (existingReport) {
       if (!canEditCurrentReport()) {
@@ -946,11 +977,10 @@ const DataEntry = () => {
     }
   };
 
-  // Сохранение отредактированного отчета
   const handleEditSave = async (updatedData) => {
     setIsSavingEdit(true);
     try {
-      const regionId = userData?.assignedCities?.[0];
+      const regionId = getRegionId();
       const regionName = userData?.assignedCitiesNames?.[0];
 
       const reportType = getReportTypeByHour(selectedHour);
@@ -997,7 +1027,10 @@ const DataEntry = () => {
             ? "Hisobot muvaffaqiyatli tahrirlandi"
             : "Ҳисобот муваффақиятли таҳрирланди",
         );
-        await loadReports(selectedDate);
+
+        // Обновляем отчеты
+        await refreshReports();
+
         setIsEditModalOpen(false);
         setEditingReport(null);
 
@@ -1026,7 +1059,6 @@ const DataEntry = () => {
     }
   };
 
-  // Получение типа отчета на узбекском
   const getReportTypeLabel = (hour) => {
     const type = getReportTypeByHour(hour);
     switch (type) {
@@ -1041,10 +1073,8 @@ const DataEntry = () => {
     }
   };
 
-  // Проверка, является ли отчет суточным
   const isDailyReport = selectedHour === 0;
 
-  // Фильтрация по поиску
   const allItems = getAllItems();
   const filteredItems = allItems.filter(
     (item) =>
@@ -1053,17 +1083,10 @@ const DataEntry = () => {
   );
   const hasObjects = filteredItems.length > 0;
 
-  // Проверка, можно ли редактировать
-  const canEdit = isReportSaved ? canEditCurrentReport() : true;
-
-  // Поля ввода неактивны, если отчет уже сохранен
-  // Это гарантирует, что при просмотре сохраненного отчета поля будут только для чтения
-  // Редактирование доступно только через модальное окно (кнопка "Tahrirlash")
   const isDisabled = isReportSaved;
 
   return (
     <div className="p-2 sm:p-4 max-w-full mx-auto">
-      {/* Заголовок */}
       <div className="mb-3 sm:mb-6">
         <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
           {translations.title}
@@ -1073,7 +1096,6 @@ const DataEntry = () => {
         </p>
       </div>
 
-      {/* Выбор даты и времени */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:p-4 mb-3 sm:mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div>
@@ -1094,8 +1116,11 @@ const DataEntry = () => {
             </label>
             <div className="grid grid-cols-4 gap-1 sm:gap-1">
               {reportHours.map((hour) => {
+                const regionId = getRegionId();
                 const isActive = selectedHour === hour;
-                const hasReport = reports.some((r) => r.hour === hour);
+                const hasReport = reports.some(
+                  (r) => r.hour === hour && r.regionId === regionId,
+                );
                 const isToday = selectedDate === getToday();
                 const isAvailable = isReportAvailable(selectedDate, hour);
                 const canCreateSpecific = canCreateSpecificReport(
@@ -1324,7 +1349,6 @@ const DataEntry = () => {
         </div>
       </div>
 
-      {/* Форма ввода данных */}
       {selectedHour !== null && (
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="p-2 sm:p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
@@ -1414,7 +1438,6 @@ const DataEntry = () => {
             </div>
           ) : (
             <>
-              {/* Десктопная таблица */}
               <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
@@ -1440,7 +1463,6 @@ const DataEntry = () => {
                     {filteredItems.map((item) => {
                       const fields = getFieldsForCategory(item.category);
                       const itemData = formData[item.category]?.[item.id] || {};
-                      // Поля неактивны, если отчет сохранен
                       const isFieldDisabled = isDisabled;
 
                       return (
@@ -1558,7 +1580,6 @@ const DataEntry = () => {
                 </table>
               </div>
 
-              {/* Мобильные карточки */}
               <div className="sm:hidden space-y-3 p-2">
                 {filteredItems.map((item, index) => {
                   const fields = getFieldsForCategory(item.category);
@@ -1690,7 +1711,6 @@ const DataEntry = () => {
                 })}
               </div>
 
-              {/* Суточный отчет */}
               {isDailyReport && (
                 <div className="p-3 sm:p-4 border-t border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
                   <h3 className="text-sm sm:text-sm font-medium text-purple-800 dark:text-purple-300 mb-2 sm:mb-3 flex items-center gap-1 sm:gap-2">
@@ -1803,7 +1823,6 @@ const DataEntry = () => {
                 </div>
               )}
 
-              {/* Кнопки */}
               <div className="px-3 py-2 sm:px-4 sm:py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex flex-wrap gap-2 sm:gap-3 justify-end">
                 <button
                   onClick={() => {
@@ -1872,7 +1891,6 @@ const DataEntry = () => {
         </div>
       )}
 
-      {/* Модальное окно подтверждения */}
       <ConfirmModal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
@@ -1883,7 +1901,6 @@ const DataEntry = () => {
         assignedObjects={assignedObjects}
       />
 
-      {/* Модальное окно редактирования */}
       {isEditModalOpen && editingReport && (
         <EditReportModal
           isOpen={isEditModalOpen}

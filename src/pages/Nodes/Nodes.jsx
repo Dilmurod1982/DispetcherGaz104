@@ -6,6 +6,8 @@ import {
   updateDoc,
   doc,
   deleteDoc,
+  query,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../../firebase/config";
 import {
@@ -26,6 +28,13 @@ import {
   PlusCircle,
   Hash,
   Building,
+  Tag,
+  User,
+  Users as UsersIcon,
+  Briefcase,
+  Building2,
+  Flame,
+  Zap,
 } from "lucide-react";
 import useLanguageStore from "../../store/languageStore";
 import useAuthStore from "../../store/authStore";
@@ -33,7 +42,7 @@ import useLogger from "../../hooks/useLogger";
 import { ActionTypes } from "../../services/logger";
 import { toast } from "react-toastify";
 
-// Компонент модального окна для создания счетчика (только модель)
+// Компонент модального окна для создания счетчика
 const MeterModal = ({ isOpen, onClose, onSave, translations }) => {
   const [meterName, setMeterName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -133,7 +142,9 @@ const Nodes = () => {
   const [grsList, setGrsList] = useState([]);
   const [meters, setMeters] = useState([]);
   const [cities, setCities] = useState([]);
+  const [nodeConsumers, setNodeConsumers] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedNodeConsumers, setSelectedNodeConsumers] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -143,12 +154,11 @@ const Nodes = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isMeterModalOpen, setIsMeterModalOpen] = useState(false);
 
-  // Проверка, является ли пользователь админом
   const isAdmin = userData?.role === "admin" || userData?.role === "Админ";
 
   const translations = {
     title: script === "latin" ? "Tugunlar" : "Тугунлар",
-    subtitle: script === "latin" ? "GRS dagi tugunla" : "ГРС даги тугунлар",
+    subtitle: script === "latin" ? "GRS dagi tugunlar" : "ГРС даги тугунлар",
     addNode: script === "latin" ? "Tugun qo'shish" : "Тугун қўшиш",
     search: script === "latin" ? "Qidirish..." : "Қидириш...",
     searchPlaceholder:
@@ -157,8 +167,9 @@ const Nodes = () => {
         : "Номи ёки ГРС бўйича қидириш",
     grs: script === "latin" ? "GTS (GRS)" : "ГТШ (ГРС)",
     name: script === "latin" ? "Nomi yoki raqami" : "Номи ёки рақами",
+    nodeNumber: script === "latin" ? "Tugun raqami" : "Тугун рақами",
+    nodeType: script === "latin" ? "Tugun turi" : "Тугун тури",
     city: script === "latin" ? "Tuman/shahar" : "Туман/шаҳар",
-    consumers: script === "latin" ? "Iste'molchilari" : "Истеъмолчилари",
     meter: script === "latin" ? "Hisoblagich" : "Ҳисоблагич",
     meterSerial: script === "latin" ? "Zavod raqami" : "Завод рақами",
     subscale:
@@ -168,12 +179,26 @@ const Nodes = () => {
     view: script === "latin" ? "Tugun ma'lumotlari" : "Тугун маълумотлари",
     grsLabel: script === "latin" ? "GTS (GRS)" : "ГТШ (ГРС)",
     nameLabel: script === "latin" ? "Nomi yoki raqami" : "Номи ёки рақами",
+    nodeNumberLabel: script === "latin" ? "Tugun raqami" : "Тугун рақами",
+    nodeTypeLabel: script === "latin" ? "Tugun turi" : "Тугун тури",
     cityLabel: script === "latin" ? "Tugun egasi" : "Тугун эгаси",
-    consumersLabel: script === "latin" ? "Iste'molchilari" : "Истеъмолчилари",
     meterLabel: script === "latin" ? "Hisoblagich" : "Ҳисоблагич",
     meterSerialLabel: script === "latin" ? "Zavod raqami" : "Завод рақами",
     subscaleLabel:
       script === "latin" ? "Shkala osti uskunasi" : "Шкала ости ускунаси",
+    consumersData:
+      script === "latin" ? "Iste'molchilar soni" : "Истеъмолчилар сони",
+    populationConsumers:
+      script === "latin" ? "Aholi iste'molchilari" : "Аҳоли истеъмолчилари",
+    budgetConsumers:
+      script === "latin" ? "Byudjet iste'molchilari" : "Бюджет истеъмолчилари",
+    smallBusinessConsumers:
+      script === "latin" ? "Kichik va o'rta biznes" : "Кичик ва ўрта бизнес",
+    industryConsumers:
+      script === "latin" ? "Sanoat iste'molchilari" : "Саноат истеъмолчилари",
+    heatSourceConsumers:
+      script === "latin" ? "Issiqlik manbai" : "Иссиқлик манбаи",
+    agtksConsumers: script === "latin" ? "AGTKS" : "АГТКШ",
     cancel: script === "latin" ? "Bekor qilish" : "Бекор қилиш",
     save: script === "latin" ? "Saqlash" : "Сақлаш",
     saving: script === "latin" ? "Saqlanmoqda..." : "Сақланмоқда...",
@@ -191,11 +216,11 @@ const Nodes = () => {
     required: script === "latin" ? "Majburiy maydon" : "Мажбурий майдон",
     selectGrs: script === "latin" ? "GTS tanlang" : "ГТШ танланг",
     selectCity:
-      script === "latin" ? "Tuman/shahar tanlang" : "Туман/шаҳар танланг",
-    selectConsumer:
-      script === "latin" ? "Iste'molchini tanlang" : "Истеъмолчини танланг",
+      script === "latin" ? "Tuman/shaharni tanlang" : "Туман/шаҳарни танланг",
     selectMeter:
       script === "latin" ? "Hisoblagich tanlang" : "Ҳисоблагич танланг",
+    selectNodeType:
+      script === "latin" ? "Tugun turini tanlang" : "Тугун турини танланг",
     noData: script === "latin" ? "Tugun topilmadi" : "Тугун топилмади",
     noDataFound:
       script === "latin"
@@ -224,10 +249,9 @@ const Nodes = () => {
     addNewMeter:
       script === "latin" ? "+ Yangi hisoblagich" : "+ Янги ҳисоблагич",
     error: script === "latin" ? "Xatolik yuz berdi" : "Хатолик юз берди",
-    consumersList: {
+    nodeTypeOptions: {
       population: script === "latin" ? "Aholi" : "Аҳоли",
-      wholesale: script === "latin" ? "Ulgurji" : "Улгуржи",
-      both: script === "latin" ? "Aholi va ulgurji" : "Аҳоли ва улгуржи",
+      industry: script === "latin" ? "Sanoat" : "Саноат",
     },
     subscaleOptions: {
       available: script === "latin" ? "Mavjud" : "Мавжуд",
@@ -244,19 +268,21 @@ const Nodes = () => {
   const loadData = async () => {
     setLoading(true);
     try {
+      // Загружаем ГРС с сортировкой по order
+      const grsQuery = query(collection(db, "grs"), orderBy("order", "asc"));
+      const grsSnapshot = await getDocs(grsQuery);
+      const grsData = grsSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setGrsList(grsData);
+
       const nodesSnapshot = await getDocs(collection(db, "nodes"));
       const nodesData = nodesSnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
       setNodes(nodesData);
-
-      const grsSnapshot = await getDocs(collection(db, "grs"));
-      const grsData = grsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setGrsList(grsData);
 
       const metersSnapshot = await getDocs(collection(db, "meters"));
       const metersData = metersSnapshot.docs.map((doc) => ({
@@ -271,6 +297,13 @@ const Nodes = () => {
         ...doc.data(),
       }));
       setCities(citiesData);
+
+      const consumersSnapshot = await getDocs(collection(db, "node_consumers"));
+      const consumersData = consumersSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setNodeConsumers(consumersData);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error(translations.error);
@@ -283,19 +316,33 @@ const Nodes = () => {
     grsId: "",
     grsName: "",
     name: "",
+    nodeNumber: "",
+    nodeType: "",
     cityId: "",
     cityName: "",
-    consumer: "",
     meterId: "",
     meterName: "",
     meterSerial: "",
     subscale: "",
   });
 
+  const [newConsumers, setNewConsumers] = useState({
+    population: "",
+    budget: "",
+    smallBusiness: "",
+    industry: "",
+    heatSource: "",
+    agtks: "",
+  });
+
   const checkFormValidity = () => {
     const currentData = isCreating ? newNode : selectedNode;
     if (!currentData) return false;
-    return currentData.grsId?.trim() && currentData.name?.trim();
+    return (
+      currentData.grsId?.trim() &&
+      currentData.name?.trim() &&
+      currentData.nodeType?.trim()
+    );
   };
 
   const handleInputChange = (field, value) => {
@@ -304,6 +351,23 @@ const Nodes = () => {
     } else {
       setSelectedNode((prev) => ({ ...prev, [field]: value }));
     }
+  };
+
+  const handleConsumerChange = (field, value) => {
+    const cleanedValue = value.replace(/\D/g, "");
+    if (isCreating) {
+      setNewConsumers((prev) => ({ ...prev, [field]: cleanedValue }));
+    } else {
+      setSelectedNodeConsumers((prev) => ({
+        ...prev,
+        [field]: cleanedValue,
+      }));
+    }
+  };
+
+  const handleNodeNumberChange = (value) => {
+    const cleanedValue = value.replace(/\D/g, "");
+    handleInputChange("nodeNumber", cleanedValue);
   };
 
   const handleGrsChange = (grsId) => {
@@ -328,11 +392,19 @@ const Nodes = () => {
   const handleCityChange = (cityId) => {
     const selectedCity = cities.find((city) => city.id === cityId);
     if (selectedCity) {
-      const type =
-        selectedCity.type === "Город"
-          ? translations.city
-          : translations.district;
-      const displayName = `${selectedCity.name} ${type}`;
+      let typeName = "";
+      if (selectedCity.type === "shahar" || selectedCity.type === "Город") {
+        typeName = translations.city;
+      } else if (
+        selectedCity.type === "tuman" ||
+        selectedCity.type === "Район"
+      ) {
+        typeName = translations.district;
+      } else {
+        typeName = selectedCity.type || "";
+      }
+
+      const displayName = `${selectedCity.name} ${typeName}`.trim();
 
       if (isCreating) {
         setNewNode((prev) => ({
@@ -412,7 +484,6 @@ const Nodes = () => {
         script === "latin" ? "Hisoblagich qo'shildi" : "Ҳисоблагич қўшилди",
       );
 
-      // Логируем создание счетчика
       await log(ActionTypes.NODE_CREATE, {
         action: "meter_created",
         meterName: meterName,
@@ -424,13 +495,26 @@ const Nodes = () => {
   };
 
   const handleNodeClick = (node) => {
+    const consumers = nodeConsumers.find((c) => c.nodeId === node.id);
+
     setSelectedNode({ ...node });
+    setSelectedNodeConsumers(
+      consumers
+        ? { ...consumers }
+        : {
+            population: "",
+            budget: "",
+            smallBusiness: "",
+            industry: "",
+            heatSource: "",
+            agtks: "",
+          },
+    );
     setIsModalOpen(true);
     setIsEditMode(false);
   };
 
   const handleCreateNode = () => {
-    // Только админ может создавать узлы
     if (!isAdmin) {
       toast.warning(
         script === "latin"
@@ -445,17 +529,25 @@ const Nodes = () => {
       grsId: "",
       grsName: "",
       name: "",
+      nodeNumber: "",
+      nodeType: "",
       cityId: "",
       cityName: "",
-      consumer: "",
       meterId: "",
       meterName: "",
       meterSerial: "",
       subscale: "",
     });
+    setNewConsumers({
+      population: "",
+      budget: "",
+      smallBusiness: "",
+      industry: "",
+      heatSource: "",
+      agtks: "",
+    });
     setIsSaving(false);
 
-    // Логируем открытие формы создания
     log(ActionTypes.NODE_CREATE, { action: "open_form" });
   };
 
@@ -465,12 +557,12 @@ const Nodes = () => {
     setIsEditMode(false);
     setIsCreating(false);
     setSelectedNode(null);
+    setSelectedNodeConsumers(null);
     setIsDeleteConfirmOpen(false);
     setIsSaving(false);
   };
 
   const handleEdit = () => {
-    // Только админ может редактировать
     if (!isAdmin) {
       toast.warning(
         script === "latin"
@@ -491,6 +583,23 @@ const Nodes = () => {
       setIsEditMode(false);
       const originalNode = nodes.find((node) => node.id === selectedNode?.id);
       setSelectedNode(originalNode ? { ...originalNode } : null);
+      if (originalNode) {
+        const consumers = nodeConsumers.find(
+          (c) => c.nodeId === originalNode.id,
+        );
+        setSelectedNodeConsumers(
+          consumers
+            ? { ...consumers }
+            : {
+                population: "",
+                budget: "",
+                smallBusiness: "",
+                industry: "",
+                heatSource: "",
+                agtks: "",
+              },
+        );
+      }
     }
   };
 
@@ -504,19 +613,27 @@ const Nodes = () => {
 
     try {
       if (isCreating) {
-        await addDoc(collection(db, "nodes"), {
+        const docRef = await addDoc(collection(db, "nodes"), {
           ...newNode,
           createdAt: new Date(),
         });
+        const nodeId = docRef.id;
 
-        // Логируем создание узла
-        await log(ActionTypes.NODE_CREATE, {
+        await addDoc(collection(db, "node_consumers"), {
+          nodeId: nodeId,
           nodeName: newNode.name,
+          nodeNumber: newNode.nodeNumber,
+          ...newConsumers,
+          createdAt: new Date(),
+        });
+
+        await log(ActionTypes.NODE_CREATE, {
+          nodeId: nodeId,
+          nodeName: newNode.name,
+          nodeNumber: newNode.nodeNumber,
+          nodeType: newNode.nodeType,
           grsName: newNode.grsName,
-          cityName: newNode.cityName,
-          consumer: newNode.consumer,
-          meterName: newNode.meterName,
-          meterSerial: newNode.meterSerial,
+          consumers: newConsumers,
         });
 
         toast.success(script === "latin" ? "Tugun qo'shildi" : "Тугун қўшилди");
@@ -526,15 +643,42 @@ const Nodes = () => {
           updatedAt: new Date(),
         });
 
-        // Логируем обновление узла
+        const existingConsumer = nodeConsumers.find(
+          (c) => c.nodeId === selectedNode.id,
+        );
+
+        const consumerData = {
+          nodeId: selectedNode.id,
+          nodeName: selectedNode.name,
+          nodeNumber: selectedNode.nodeNumber,
+          population: selectedNodeConsumers?.population || "",
+          budget: selectedNodeConsumers?.budget || "",
+          smallBusiness: selectedNodeConsumers?.smallBusiness || "",
+          industry: selectedNodeConsumers?.industry || "",
+          heatSource: selectedNodeConsumers?.heatSource || "",
+          agtks: selectedNodeConsumers?.agtks || "",
+          updatedAt: new Date(),
+        };
+
+        if (existingConsumer) {
+          await updateDoc(
+            doc(db, "node_consumers", existingConsumer.id),
+            consumerData,
+          );
+        } else {
+          await addDoc(collection(db, "node_consumers"), {
+            ...consumerData,
+            createdAt: new Date(),
+          });
+        }
+
         await log(ActionTypes.NODE_UPDATE, {
           nodeId: selectedNode.id,
           nodeName: selectedNode.name,
+          nodeNumber: selectedNode.nodeNumber,
+          nodeType: selectedNode.nodeType,
           grsName: selectedNode.grsName,
-          cityName: selectedNode.cityName,
-          consumer: selectedNode.consumer,
-          meterName: selectedNode.meterName,
-          meterSerial: selectedNode.meterSerial,
+          consumers: selectedNodeConsumers,
         });
 
         toast.success(
@@ -551,7 +695,6 @@ const Nodes = () => {
   };
 
   const handleDelete = async () => {
-    // Только админ может удалять
     if (!isAdmin) {
       toast.warning(
         script === "latin"
@@ -563,14 +706,22 @@ const Nodes = () => {
     setIsSaving(true);
     try {
       const nodeToDelete = selectedNode;
+
       await deleteDoc(doc(db, "nodes", selectedNode.id));
 
-      // Логируем удаление узла
+      const existingConsumer = nodeConsumers.find(
+        (c) => c.nodeId === selectedNode.id,
+      );
+      if (existingConsumer) {
+        await deleteDoc(doc(db, "node_consumers", existingConsumer.id));
+      }
+
       await log(ActionTypes.NODE_DELETE, {
         nodeId: nodeToDelete.id,
         nodeName: nodeToDelete.name,
+        nodeNumber: nodeToDelete.nodeNumber,
+        nodeType: nodeToDelete.nodeType,
         grsName: nodeToDelete.grsName,
-        cityName: nodeToDelete.cityName,
       });
 
       toast.success(script === "latin" ? "Tugun o'chirildi" : "Тугун ўчирилди");
@@ -583,26 +734,52 @@ const Nodes = () => {
     }
   };
 
-  // Функция для очистки названия от скобок
   const cleanCityName = (name) => {
     if (!name) return translations.notSpecified;
-    // Удаляем скобки и все что внутри них: "Farg'ona (shahar)" -> "Farg'ona shahar"
     return name.replace(/[()]/g, "").trim();
   };
 
-  const filteredNodes = nodes.filter(
-    (node) =>
-      node.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      node.grsName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      node.cityName?.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  // Сортировка узлов: сначала по order ГРС, потом по номеру узла
+  const getSortedNodes = () => {
+    // Создаем карту для быстрого доступа к order ГРС
+    const grsOrderMap = {};
+    grsList.forEach((grs) => {
+      grsOrderMap[grs.id] = grs.order || 999;
+    });
+
+    // Сначала фильтруем по поиску
+    let filtered = nodes.filter(
+      (node) =>
+        node.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        node.nodeNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        node.grsName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        node.cityName?.toLowerCase().includes(searchTerm.toLowerCase()),
+    );
+
+    // Сортируем: сначала по order ГРС, потом по номеру узла
+    return filtered.sort((a, b) => {
+      const orderA = grsOrderMap[a.grsId] || 999;
+      const orderB = grsOrderMap[b.grsId] || 999;
+
+      // Сначала сравниваем по order ГРС
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+
+      // Если order ГРС одинаковый, сравниваем по номеру узла (как числа)
+      const numA = parseInt(a.nodeNumber) || 0;
+      const numB = parseInt(b.nodeNumber) || 0;
+      return numA - numB;
+    });
+  };
+
+  const sortedFilteredNodes = getSortedNodes();
 
   const isFormValid = checkFormValidity();
 
-  const consumerOptions = [
-    { value: "Ахоли", label: translations.consumersList.population },
-    { value: "Улгуржи", label: translations.consumersList.wholesale },
-    { value: "Ахоли ва улгуржи", label: translations.consumersList.both },
+  const nodeTypeOptions = [
+    { value: "Ахоли", label: translations.nodeTypeOptions.population },
+    { value: "Саноат", label: translations.nodeTypeOptions.industry },
   ];
 
   const subscaleOptions = [
@@ -610,8 +787,8 @@ const Nodes = () => {
     { value: "Мавжуд эмас", label: translations.subscaleOptions.notAvailable },
   ];
 
-  const getConsumerLabel = (value) => {
-    const option = consumerOptions.find((opt) => opt.value === value);
+  const getNodeTypeLabel = (value) => {
+    const option = nodeTypeOptions.find((opt) => opt.value === value);
     return option ? option.label : value;
   };
 
@@ -645,7 +822,6 @@ const Nodes = () => {
             {translations.subtitle}
           </p>
         </div>
-        {/* Кнопка добавления - показываем только админам */}
         {isAdmin && (
           <button
             onClick={handleCreateNode}
@@ -674,7 +850,8 @@ const Nodes = () => {
       </div>
 
       <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-        {translations.total}: {filteredNodes.length} {translations.totalCount}
+        {translations.total}: {sortedFilteredNodes.length}{" "}
+        {translations.totalCount}
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -682,63 +859,58 @@ const Nodes = () => {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">
+                  {translations.grs}
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  {translations.nodeNumber}
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   {translations.name}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden md:table-cell">
-                  {translations.grs}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden lg:table-cell">
-                  {translations.city}
+                  {translations.nodeType}
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden xl:table-cell">
-                  {translations.consumers}
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider hidden 2xl:table-cell">
-                  {translations.meter}
+                  {translations.city}
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {filteredNodes.map((node) => (
+              {sortedFilteredNodes.map((node) => (
                 <tr
                   key={node.id}
                   onClick={() => handleNodeClick(node)}
                   className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-150"
                 >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Link className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                      </div>
-                      <span className="font-medium text-gray-900 dark:text-white text-sm">
-                        {node.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden lg:table-cell">
                     <div className="flex items-center gap-2">
                       <Factory className="w-4 h-4 text-gray-400" />
                       <span>{node.grsName || translations.notSpecified}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden lg:table-cell">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Hash className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                      </div>
+                      <span className="font-medium text-gray-900 dark:text-white text-sm">
+                        {node.nodeNumber || "—"}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                    {node.name || translations.notSpecified}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
+                      {getNodeTypeLabel(node.nodeType)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden xl:table-cell">
                     <div className="flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-gray-400" />
                       <span>{cleanCityName(node.cityName)}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden xl:table-cell">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                      {getConsumerLabel(node.consumer)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 hidden 2xl:table-cell">
-                    <div className="flex items-center gap-2">
-                      <Cpu className="w-4 h-4 text-gray-400" />
-                      <span>
-                        {getMeterDisplay(node.meterName, node.meterSerial)}
-                      </span>
                     </div>
                   </td>
                 </tr>
@@ -747,7 +919,7 @@ const Nodes = () => {
           </table>
         </div>
 
-        {filteredNodes.length === 0 && (
+        {sortedFilteredNodes.length === 0 && (
           <div className="text-center py-12">
             <Link
               className="mx-auto text-gray-300 dark:text-gray-600 mb-3"
@@ -773,14 +945,14 @@ const Nodes = () => {
         )}
       </div>
 
-      {/* Модальное окно для узла */}
+      {/* Модальное окно для узла - без изменений */}
       {isModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
           onClick={isSaving ? undefined : handleCloseModal}
         >
           <div
-            className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-lg max-h-[90vh] overflow-hidden"
+            className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
@@ -802,164 +974,336 @@ const Nodes = () => {
 
             <div className="px-6 py-4 overflow-y-auto max-h-[60vh]">
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.grsLabel}{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={
-                      isCreating ? newNode.grsId : selectedNode?.grsId || ""
-                    }
-                    onChange={(e) => handleGrsChange(e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                  >
-                    <option value="">{translations.selectGrs}</option>
-                    {grsList.map((grs) => (
-                      <option key={grs.id} value={grs.id}>
-                        {grs.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.nameLabel}{" "}
-                    <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={isCreating ? newNode.name : selectedNode?.name || ""}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    placeholder={translations.nameLabel}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.cityLabel}
-                  </label>
-                  <select
-                    value={
-                      isCreating ? newNode.cityId : selectedNode?.cityId || ""
-                    }
-                    onChange={(e) => handleCityChange(e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                  >
-                    <option value="">{translations.selectCity}</option>
-                    {cities.map((city) => {
-                      const type =
-                        city.type === "Город"
-                          ? translations.city
-                          : translations.district;
-                      const displayName = `${city.name} ${type}`;
-                      return (
-                        <option key={city.id} value={city.id}>
-                          {displayName}
+                {/* Основная информация */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.grsLabel}{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={
+                        isCreating ? newNode.grsId : selectedNode?.grsId || ""
+                      }
+                      onChange={(e) => handleGrsChange(e.target.value)}
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <option value="">{translations.selectGrs}</option>
+                      {grsList.map((grs) => (
+                        <option key={grs.id} value={grs.id}>
+                          {grs.name}
                         </option>
-                      );
-                    })}
-                  </select>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.nodeNumberLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating
+                          ? newNode.nodeNumber
+                          : selectedNode?.nodeNumber || ""
+                      }
+                      onChange={(e) => handleNodeNumberChange(e.target.value)}
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                      placeholder={translations.nodeNumberLabel}
+                      inputMode="numeric"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.consumersLabel}
-                  </label>
-                  <select
-                    value={
-                      isCreating
-                        ? newNode.consumer
-                        : selectedNode?.consumer || ""
-                    }
-                    onChange={(e) =>
-                      handleInputChange("consumer", e.target.value)
-                    }
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                  >
-                    <option value="">{translations.selectConsumer}</option>
-                    {consumerOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.nameLabel}{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating ? newNode.name : selectedNode?.name || ""
+                      }
+                      onChange={(e) =>
+                        handleInputChange("name", e.target.value)
+                      }
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                      placeholder={translations.nameLabel}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.nodeTypeLabel}{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={
+                        isCreating
+                          ? newNode.nodeType
+                          : selectedNode?.nodeType || ""
+                      }
+                      onChange={(e) =>
+                        handleInputChange("nodeType", e.target.value)
+                      }
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <option value="">{translations.selectNodeType}</option>
+                      {nodeTypeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.cityLabel}
+                    </label>
+                    <select
+                      value={
+                        isCreating ? newNode.cityId : selectedNode?.cityId || ""
+                      }
+                      onChange={(e) => handleCityChange(e.target.value)}
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <option value="">{translations.selectCity}</option>
+                      {cities.map((city) => {
+                        let typeName = "";
+                        if (city.type === "shahar" || city.type === "Город") {
+                          typeName = translations.city;
+                        } else if (
+                          city.type === "tuman" ||
+                          city.type === "Район"
+                        ) {
+                          typeName = translations.district;
+                        } else {
+                          typeName = city.type || "";
+                        }
+                        const displayName = `${city.name} ${typeName}`.trim();
+                        return (
+                          <option key={city.id} value={city.id}>
+                            {displayName}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.meterLabel}
+                    </label>
+                    <select
+                      value={
+                        isCreating
+                          ? newNode.meterId
+                          : selectedNode?.meterId || ""
+                      }
+                      onChange={(e) => handleMeterChange(e.target.value)}
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <option value="">{translations.selectMeter}</option>
+                      {meters.map((meter) => (
+                        <option key={meter.id} value={meter.id}>
+                          {meter.name}
+                          {meter.serial ? ` (№${meter.serial})` : ""}
+                        </option>
+                      ))}
+                      <option value="new" className="text-blue-600 font-medium">
+                        {translations.addNewMeter}
                       </option>
-                    ))}
-                  </select>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.meterLabel}
-                  </label>
-                  <select
-                    value={
-                      isCreating ? newNode.meterId : selectedNode?.meterId || ""
-                    }
-                    onChange={(e) => handleMeterChange(e.target.value)}
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                  >
-                    <option value="">{translations.selectMeter}</option>
-                    {meters.map((meter) => (
-                      <option key={meter.id} value={meter.id}>
-                        {meter.name}
-                        {meter.serial ? ` (№${meter.serial})` : ""}
-                      </option>
-                    ))}
-                    <option value="new" className="text-blue-600 font-medium">
-                      {translations.addNewMeter}
-                    </option>
-                  </select>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.meterSerialLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={
+                        isCreating
+                          ? newNode.meterSerial
+                          : selectedNode?.meterSerial || ""
+                      }
+                      onChange={(e) =>
+                        handleInputChange("meterSerial", e.target.value)
+                      }
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                      placeholder={translations.meterSerialPlaceholder}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {translations.subscaleLabel}
+                    </label>
+                    <select
+                      value={
+                        isCreating
+                          ? newNode.subscale
+                          : selectedNode?.subscale || ""
+                      }
+                      onChange={(e) =>
+                        handleInputChange("subscale", e.target.value)
+                      }
+                      disabled={(!isCreating && !isEditMode) || isSaving}
+                      className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                    >
+                      <option value="">{translations.selectConsumer}</option>
+                      {subscaleOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.meterSerialLabel}
-                  </label>
-                  <input
-                    type="text"
-                    value={
-                      isCreating
-                        ? newNode.meterSerial
-                        : selectedNode?.meterSerial || ""
-                    }
-                    onChange={(e) =>
-                      handleInputChange("meterSerial", e.target.value)
-                    }
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                    placeholder={translations.meterSerialPlaceholder}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {translations.subscaleLabel}
-                  </label>
-                  <select
-                    value={
-                      isCreating
-                        ? newNode.subscale
-                        : selectedNode?.subscale || ""
-                    }
-                    onChange={(e) =>
-                      handleInputChange("subscale", e.target.value)
-                    }
-                    disabled={(!isCreating && !isEditMode) || isSaving}
-                    className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
-                  >
-                    <option value="">{translations.selectConsumer}</option>
-                    {subscaleOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                {/* Данные о потребителях */}
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                    <UsersIcon className="w-4 h-4" />
+                    {translations.consumersData}
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        {translations.populationConsumers}
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          isCreating
+                            ? newConsumers.population
+                            : selectedNodeConsumers?.population || ""
+                        }
+                        onChange={(e) =>
+                          handleConsumerChange("population", e.target.value)
+                        }
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        placeholder="0"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        {translations.budgetConsumers}
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          isCreating
+                            ? newConsumers.budget
+                            : selectedNodeConsumers?.budget || ""
+                        }
+                        onChange={(e) =>
+                          handleConsumerChange("budget", e.target.value)
+                        }
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        placeholder="0"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        {translations.smallBusinessConsumers}
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          isCreating
+                            ? newConsumers.smallBusiness
+                            : selectedNodeConsumers?.smallBusiness || ""
+                        }
+                        onChange={(e) =>
+                          handleConsumerChange("smallBusiness", e.target.value)
+                        }
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        placeholder="0"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        {translations.industryConsumers}
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          isCreating
+                            ? newConsumers.industry
+                            : selectedNodeConsumers?.industry || ""
+                        }
+                        onChange={(e) =>
+                          handleConsumerChange("industry", e.target.value)
+                        }
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        placeholder="0"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        {translations.heatSourceConsumers}
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          isCreating
+                            ? newConsumers.heatSource
+                            : selectedNodeConsumers?.heatSource || ""
+                        }
+                        onChange={(e) =>
+                          handleConsumerChange("heatSource", e.target.value)
+                        }
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        placeholder="0"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        {translations.agtksConsumers}
+                      </label>
+                      <input
+                        type="text"
+                        value={
+                          isCreating
+                            ? newConsumers.agtks
+                            : selectedNodeConsumers?.agtks || ""
+                        }
+                        onChange={(e) =>
+                          handleConsumerChange("agtks", e.target.value)
+                        }
+                        disabled={(!isCreating && !isEditMode) || isSaving}
+                        className={`w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400 transition-colors text-sm ${isSaving ? "opacity-50 cursor-not-allowed" : ""}`}
+                        placeholder="0"
+                        inputMode="numeric"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 {(isCreating || isEditMode) && (
@@ -986,7 +1330,6 @@ const Nodes = () => {
               <div className="flex flex-wrap gap-2 justify-end">
                 {!isCreating && !isEditMode && (
                   <>
-                    {/* Кнопки Ўчириш и Таҳрирлаш - показываем только админам */}
                     {isAdmin && (
                       <>
                         <button
@@ -1055,7 +1398,7 @@ const Nodes = () => {
         </div>
       )}
 
-      {/* Модальное окно для создания счетчика (только модель) */}
+      {/* Модальное окно для создания счетчика */}
       <MeterModal
         isOpen={isMeterModalOpen}
         onClose={() => setIsMeterModalOpen(false)}

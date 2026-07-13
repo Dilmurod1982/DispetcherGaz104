@@ -1,9 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/config";
+import { toast } from "react-toastify";
 
 const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [cities, setCities] = useState([]);
+  const [citiesLoading, setCitiesLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: user.email || "",
     displayName: user.displayName || "",
@@ -17,8 +21,12 @@ const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
     address: user.address || "",
     role: user.role || "operator",
     accessEndDate: user.accessEndDate || "",
+    assignedCities: user.assignedCities || [],
   });
   const [loading, setLoading] = useState(false);
+
+  // Роли, для которых показываем выбор районов
+  const rolesWithCities = ["ray_disp", "tuman_bosh", "tuman_metrolog", "guest"];
 
   const translations = {
     title: "Информация о пользователе",
@@ -36,6 +44,11 @@ const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
     passportNumber: "Номер паспорта",
     address: "Адрес",
     role: "Роль",
+    assignedCities: "Прикрепленные районы/города",
+    selectAll: "Выбрать все",
+    deselectAll: "Снять все",
+    noCities: "Районы/города не найдены",
+    loadingCities: "Загрузка районов/городов...",
     cancel: "Отмена",
     save: "Сохранить",
     saving: "Сохранение...",
@@ -46,6 +59,35 @@ const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
     expired: "Доступ истек",
     daysLeft: "осталось",
     days: "дней",
+  };
+
+  // Загрузка городов при открытии модалки
+  useEffect(() => {
+    loadCities();
+  }, []);
+
+  const loadCities = async () => {
+    setCitiesLoading(true);
+    try {
+      const citiesSnapshot = await getDocs(collection(db, "cities"));
+      const citiesData = citiesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setCities(citiesData);
+    } catch (error) {
+      console.error("Error loading cities:", error);
+      toast.error("Ошибка загрузки районов/городов");
+    } finally {
+      setCitiesLoading(false);
+    }
+  };
+
+  // Получение названия города с типом
+  const getCityDisplayName = (city) => {
+    if (!city) return "";
+    const type = city.type === "Город" ? "шаҳар" : "туман";
+    return `${city.name} (${type})`;
   };
 
   const maskPinfl = (pinfl) => {
@@ -85,6 +127,45 @@ const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
     }));
   };
 
+  // Обработка выбора района/города
+  const handleCityToggle = (cityId) => {
+    if (!isEditing) return;
+
+    setFormData((prev) => {
+      const currentCities = prev.assignedCities || [];
+      if (currentCities.includes(cityId)) {
+        return {
+          ...prev,
+          assignedCities: currentCities.filter((id) => id !== cityId),
+        };
+      } else {
+        return {
+          ...prev,
+          assignedCities: [...currentCities, cityId],
+        };
+      }
+    });
+  };
+
+  // Выбрать все районы
+  const handleSelectAll = () => {
+    if (!isEditing) return;
+    const allCityIds = cities.map((city) => city.id);
+    setFormData((prev) => ({
+      ...prev,
+      assignedCities: allCityIds,
+    }));
+  };
+
+  // Снять все районы
+  const handleDeselectAll = () => {
+    if (!isEditing) return;
+    setFormData((prev) => ({
+      ...prev,
+      assignedCities: [],
+    }));
+  };
+
   const handleSave = async () => {
     setLoading(true);
     try {
@@ -101,15 +182,20 @@ const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
         address: formData.address,
         role: formData.role,
         accessEndDate: formData.accessEndDate,
+        assignedCities: formData.assignedCities || [],
+        // Сохраняем названия городов для отображения
+        assignedCitiesNames: formData.assignedCities.map(
+          (cityId) => cities.find((c) => c.id === cityId)?.name || cityId,
+        ),
       };
 
       await updateDoc(userDoc, updateData);
       onUserUpdated();
       setIsEditing(false);
-      alert("Данные пользователя успешно обновлены");
+      toast.success("Данные пользователя успешно обновлены");
     } catch (error) {
       console.error("Error updating user:", error);
-      alert("Ошибка при обновлении пользователя: " + error.message);
+      toast.error("Ошибка при обновлении пользователя: " + error.message);
     } finally {
       setLoading(false);
     }
@@ -129,6 +215,7 @@ const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
       address: user.address || "",
       role: user.role || "operator",
       accessEndDate: user.accessEndDate || "",
+      assignedCities: user.assignedCities || [],
     });
     setIsEditing(false);
   };
@@ -162,6 +249,9 @@ const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
   };
 
   const accessStatus = getAccessStatus();
+
+  // Проверяем, нужно ли показывать выбор районов
+  const showCitySelection = rolesWithCities.includes(formData.role);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -391,19 +481,113 @@ const UserModal = ({ user, onClose, onUserUpdated, readOnly = false }) => {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400"
               >
                 <option value="admin">Админ</option>
-                <option value="tasischi">Таъсисчи</option>
-                <option value="nazoratbux">Назорат Бухгалтер</option>
-                <option value="nazorat">Назорат</option>
-                <option value="rahbar">Бошқарувчи</option>
-                <option value="operator">Оператор</option>
-                <option value="boshmexanik">Бош механик</option>
-                <option value="mehanik">Механик</option>
-                <option value="buxgalter">Бухгалтер</option>
-                <option value="yurist">Юрист</option>
-                <option value="partner">Хамкор</option>
-                <option value="electrengineer">Электронщик</option>
+                <option value="direktor">Директор</option>
+                <option value="bolim">Бўлим</option>
+                <option value="vil_disp">Вилоят диспетчери</option>
+                <option value="ray_disp">Туман/шаҳар диспетчери</option>
+                <option value="guest">Мехмон</option>
+                <option value="tuman_bosh">ГТБ бошлиғи</option>
+                <option value="tuman_metrolog">Туман/шаҳар метрологи</option>
+                <option value="metrolog">Вилоят метрологи</option>
               </select>
             </div>
+
+            {/* Прикрепленные районы/города - показываем только для определенных ролей */}
+            {showCitySelection && (
+              <div className="md:col-span-2 space-y-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {translations.assignedCities}
+                  {formData.assignedCities.length > 0 && (
+                    <span className="text-green-500 ml-1">
+                      ✓ ({formData.assignedCities.length})
+                    </span>
+                  )}
+                </label>
+
+                {isEditing ? (
+                  <>
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={handleSelectAll}
+                        className="px-3 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                      >
+                        {translations.selectAll}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeselectAll}
+                        className="px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                      >
+                        {translations.deselectAll}
+                      </button>
+                    </div>
+
+                    {citiesLoading ? (
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        {translations.loadingCities}
+                      </div>
+                    ) : cities.length > 0 ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-2 border border-gray-200 dark:border-gray-600 rounded-lg">
+                        {cities.map((city) => {
+                          const isChecked = formData.assignedCities.includes(
+                            city.id,
+                          );
+                          const displayName = getCityDisplayName(city);
+                          return (
+                            <label
+                              key={city.id}
+                              className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
+                                isChecked
+                                  ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
+                                  : "hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleCityToggle(city.id)}
+                                className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-sm text-gray-700 dark:text-gray-300">
+                                {displayName}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        {translations.noCities}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  // Режим просмотра - показываем выбранные города
+                  <div className="flex flex-wrap gap-2 p-2 border border-gray-200 dark:border-gray-600 rounded-lg min-h-[40px]">
+                    {formData.assignedCities &&
+                    formData.assignedCities.length > 0 ? (
+                      cities
+                        .filter((city) =>
+                          formData.assignedCities.includes(city.id),
+                        )
+                        .map((city) => (
+                          <span
+                            key={city.id}
+                            className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                          >
+                            {getCityDisplayName(city)}
+                          </span>
+                        ))
+                    ) : (
+                      <span className="text-sm text-gray-400">
+                        {translations.noCities}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

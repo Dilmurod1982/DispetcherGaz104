@@ -276,21 +276,27 @@ export const getReportsByDate = async (monthKey, date, regionId = null) => {
     const collectionName = getReportCollectionName(monthKey);
     const reportsRef = collection(db, collectionName);
 
-    let q = query(
-      reportsRef,
-      where("date", "==", date),
-      orderBy("hour", "asc"),
-    );
-
+    let q;
     if (regionId) {
-      q = query(q, where("regionId", "==", regionId));
+      q = query(
+        reportsRef,
+        where("date", "==", date),
+        where("regionId", "==", regionId),
+        orderBy("hour", "asc"),
+      );
+    } else {
+      q = query(reportsRef, where("date", "==", date), orderBy("hour", "asc"));
     }
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
+    const reports = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
+
+    console.log(`Reports loaded for ${date} (region: ${regionId}):`, reports); // Для отладки
+
+    return reports;
   } catch (error) {
     console.error("Error getting reports by date:", error);
     return [];
